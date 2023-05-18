@@ -34,7 +34,7 @@ impl Chain {
   pub(crate) fn default_mempool_url(self) -> &'static str {
     match self {
       Self::Mainnet => "https://mempool.coming.chat/",
-      Self::Regtest => todo!(),
+      Self::Regtest => "https://mempool.space/testnet/",
       Self::Signet => "https://mempool.coming.chat/signet/",
       Self::Testnet => "https://mempool.space/testnet/",
     }
