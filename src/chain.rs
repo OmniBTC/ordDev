@@ -31,6 +31,15 @@ impl Chain {
     }
   }
 
+  pub(crate) fn default_mempool_url(self) -> &'static str {
+    match self {
+      Self::Mainnet => "https://mempool.coming.chat/",
+      Self::Regtest => todo!(),
+      Self::Signet => "https://mempool.coming.chat/signet/",
+      Self::Testnet => "https://mempool.space/testnet/",
+    }
+  }
+
   pub(crate) fn inscription_content_size_limit(self) -> Option<usize> {
     match self {
       Self::Mainnet | Self::Regtest => None,

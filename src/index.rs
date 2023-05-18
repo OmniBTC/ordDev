@@ -130,6 +130,23 @@ impl<T> BitcoinCoreRpcResultExt<T> for Result<T, bitcoincore_rpc::Error> {
   }
 }
 
+#[derive(Clone, PartialEq, Eq, Debug, Deserialize, Serialize)]
+pub struct ListUnspentStatusEntry {
+  pub confirmed: bool,
+  pub block_height: usize,
+  pub block_hash: bitcoin::BlockHash,
+  pub block_time: u32,
+}
+
+#[derive(Clone, PartialEq, Eq, Debug, Deserialize, Serialize)]
+pub struct ListUnspentResultEntry {
+  pub txid: bitcoin::Txid,
+  pub vout: u32,
+  pub status: ListUnspentStatusEntry,
+  #[serde(with = "bitcoin::util::amount::serde::as_btc")]
+  pub value: Amount,
+}
+
 impl Index {
   pub(crate) fn open(options: &Options) -> Result<Self> {
     let client = options.bitcoin_rpc_client()?;
@@ -230,6 +247,39 @@ impl Index {
       reorged: AtomicBool::new(false),
       options: options.clone(),
     })
+  }
+
+  pub(crate) fn get_unspent_outputs_by_mempool(
+    &self,
+    addr: &str,
+  ) -> Result<BTreeMap<OutPoint, Amount>> {
+    let mut utxos = BTreeMap::new();
+    let url = format!(
+      "{}api/address/{}/utxo",
+      self.options.chain().default_mempool_url(),
+      addr,
+    );
+    let rep = reqwest::blocking::get(url)?.text()?;
+    utxos.extend(
+      serde_json::from_str::<Vec<ListUnspentResultEntry>>(&rep)?
+        .into_iter()
+        .map(|utxo| {
+          let outpoint = OutPoint::new(utxo.txid, utxo.vout);
+          let amount = utxo.value;
+
+          (outpoint, amount)
+        }),
+    );
+    let rtx = self.database.begin_read()?;
+    let outpoint_to_value = rtx.open_table(OUTPOINT_TO_VALUE)?;
+    for outpoint in utxos.keys() {
+      if outpoint_to_value.get(&outpoint.store())?.is_none() {
+        return Err(anyhow!(
+          "output in Bitcoin Core wallet but not in ord index: {outpoint}"
+        ));
+      }
+    }
+    Ok(utxos)
   }
 
   pub(crate) fn get_unspent_outputs(&self, _wallet: Wallet) -> Result<BTreeMap<OutPoint, Amount>> {

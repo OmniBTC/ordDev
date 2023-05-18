@@ -19,6 +19,7 @@ pub mod cardinals;
 pub mod create;
 pub(crate) mod inscribe;
 pub mod inscriptions;
+pub(crate) mod mint_brc20;
 pub mod outputs;
 pub mod receive;
 mod restore;
@@ -26,7 +27,6 @@ pub mod sats;
 pub mod send;
 pub(crate) mod transaction_builder;
 pub mod transactions;
-pub(crate) mod mint_brc20;
 
 #[derive(Debug, Parser)]
 pub(crate) enum Wallet {
