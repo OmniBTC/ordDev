@@ -61,6 +61,7 @@ impl MintBrc20 {
 
     let client = options.bitcoin_rpc_client_for_wallet_command(false)?;
 
+    // todo! replace get_unspent_outputs_by_mempool
     let mut utxos = index.get_unspent_outputs(Wallet::load(&options)?)?;
 
     let inscriptions = index.get_inscriptions(None)?;
