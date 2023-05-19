@@ -16,6 +16,7 @@ use {
   redb::{Database, ReadableTable, Table, TableDefinition, WriteStrategy, WriteTransaction},
   std::collections::HashMap,
   std::sync::atomic::{self, AtomicBool},
+  reqwest,
 };
 
 mod entry;

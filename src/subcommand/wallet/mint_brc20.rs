@@ -1,6 +1,5 @@
 use {
   super::*,
-  crate::wallet::Wallet,
   bitcoin::{
     blockdata::{opcodes, script},
     policy::MAX_STANDARD_TX_WEIGHT,
@@ -8,21 +7,18 @@ use {
     secp256k1::{
       self, constants::SCHNORR_SIGNATURE_SIZE, rand, schnorr::Signature, Secp256k1, XOnlyPublicKey,
     },
-    util::key::PrivateKey,
     util::sighash::{Prevouts, SighashCache},
     util::taproot::{ControlBlock, LeafVersion, TapLeafHash, TaprootBuilder},
     PackedLockTime, SchnorrSighashType, Witness,
   },
-  bitcoincore_rpc::bitcoincore_rpc_json::{ImportDescriptors, Timestamp},
-  bitcoincore_rpc::Client,
   std::collections::BTreeSet,
 };
 
 #[derive(Serialize)]
 struct Output {
-  commit: Txid,
+  commit: Transaction,
   inscription: InscriptionId,
-  reveal: Txid,
+  reveal: Transaction,
   fees: u64,
 }
 
@@ -50,6 +46,8 @@ pub(crate) struct MintBrc20 {
   pub(crate) dry_run: bool,
   #[clap(long, help = "Send inscription to <DESTINATION>.")]
   pub(crate) destination: Option<Address>,
+  #[clap(long, help = "Send inscription from <SOURCE>.")]
+  pub(crate) source: Address,
 }
 
 impl MintBrc20 {
@@ -59,21 +57,18 @@ impl MintBrc20 {
     let index = Index::open(&options)?;
     index.update()?;
 
-    let client = options.bitcoin_rpc_client_for_wallet_command(false)?;
-
-    // todo! replace get_unspent_outputs_by_mempool
-    let mut utxos = index.get_unspent_outputs(Wallet::load(&options)?)?;
+    let source = self.source;
+    let mut utxos = index.get_unspent_outputs_by_mempool(&format!("{}", source))?;
 
     let inscriptions = index.get_inscriptions(None)?;
 
-    let commit_tx_change = [get_change_address(&client)?, get_change_address(&client)?];
+    let commit_tx_change = [source.clone(), source.clone()];
 
     let reveal_tx_destination = self
       .destination
-      .map(Ok)
-      .unwrap_or_else(|| get_change_address(&client))?;
+      .unwrap_or_else(|| source);
 
-    let (unsigned_commit_tx, reveal_tx, recovery_key_pair) =
+    let (unsigned_commit_tx, reveal_tx, _recovery_key_pair) =
       MintBrc20::create_inscription_transactions(
         self.satpoint,
         inscription,
@@ -97,38 +92,12 @@ impl MintBrc20 {
     let fees =
       Self::calculate_fee(&unsigned_commit_tx, &utxos) + Self::calculate_fee(&reveal_tx, &utxos);
 
-    if self.dry_run {
-      print_json(Output {
-        commit: unsigned_commit_tx.txid(),
-        reveal: reveal_tx.txid(),
+    print_json(Output {
+        commit: unsigned_commit_tx,
+        reveal: reveal_tx.clone(),
         inscription: reveal_tx.txid().into(),
         fees,
       })?;
-    } else {
-      if !self.no_backup {
-        MintBrc20::backup_recovery_key(&client, recovery_key_pair, options.chain().network())?;
-      }
-
-      let signed_raw_commit_tx = client
-        .sign_raw_transaction_with_wallet(&unsigned_commit_tx, None, None)?
-        .hex;
-
-      let commit = client
-        .send_raw_transaction(&signed_raw_commit_tx)
-        .context("Failed to send commit transaction")?;
-
-      let reveal = client
-        .send_raw_transaction(&reveal_tx)
-        .context("Failed to send reveal transaction")?;
-
-      print_json(Output {
-        commit,
-        reveal,
-        inscription: reveal.into(),
-        fees,
-      })?;
-    };
-
     Ok(())
   }
 
@@ -301,34 +270,6 @@ impl MintBrc20 {
     }
 
     Ok((unsigned_commit_tx, reveal_tx, recovery_key_pair))
-  }
-
-  fn backup_recovery_key(
-    client: &Client,
-    recovery_key_pair: TweakedKeyPair,
-    network: Network,
-  ) -> Result {
-    let recovery_private_key = PrivateKey::new(recovery_key_pair.to_inner().secret_key(), network);
-
-    let info = client.get_descriptor_info(&format!("rawtr({})", recovery_private_key.to_wif()))?;
-
-    let response = client.import_descriptors(ImportDescriptors {
-      descriptor: format!("rawtr({})#{}", recovery_private_key.to_wif(), info.checksum),
-      timestamp: Timestamp::Now,
-      active: Some(false),
-      range: None,
-      next_index: None,
-      internal: Some(false),
-      label: Some("commit tx recovery key".to_string()),
-    })?;
-
-    for result in response {
-      if !result.success {
-        return Err(anyhow!("commit tx recovery key import failed"));
-      }
-    }
-
-    Ok(())
   }
 
   fn build_reveal_transaction(
