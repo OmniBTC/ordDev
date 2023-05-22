@@ -134,9 +134,9 @@ impl<T> BitcoinCoreRpcResultExt<T> for Result<T, bitcoincore_rpc::Error> {
 #[derive(Clone, PartialEq, Eq, Debug, Deserialize, Serialize)]
 pub struct ListUnspentStatusEntry {
   pub confirmed: bool,
-  pub block_height: usize,
-  pub block_hash: bitcoin::BlockHash,
-  pub block_time: u32,
+  pub block_height: Option<usize>,
+  pub block_hash: Option<bitcoin::BlockHash>,
+  pub block_time: Option<u32>,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Deserialize, Serialize)]
@@ -144,7 +144,7 @@ pub struct ListUnspentResultEntry {
   pub txid: bitcoin::Txid,
   pub vout: u32,
   pub status: ListUnspentStatusEntry,
-  #[serde(with = "bitcoin::util::amount::serde::as_btc")]
+  #[serde(with = "bitcoin::util::amount::serde::as_sat")]
   pub value: Amount,
 }
 
@@ -273,14 +273,13 @@ impl Index {
     );
     let rtx = self.database.begin_read()?;
     let outpoint_to_value = rtx.open_table(OUTPOINT_TO_VALUE)?;
-    for outpoint in utxos.keys() {
-      if outpoint_to_value.get(&outpoint.store())?.is_none() {
-        return Err(anyhow!(
-          "output in Bitcoin Core wallet but not in ord index: {outpoint}"
-        ));
+    let mut filter_utxos = BTreeMap::new();
+    for (outpoint, amount) in utxos.into_iter() {
+      if outpoint_to_value.get(&outpoint.store())?.is_some() {
+        filter_utxos.insert(outpoint, amount);
       }
     }
-    Ok(utxos)
+    Ok(filter_utxos)
   }
 
   pub(crate) fn get_unspent_outputs(&self, _wallet: Wallet) -> Result<BTreeMap<OutPoint, Amount>> {
@@ -942,6 +941,7 @@ impl Index {
 
 #[cfg(test)]
 mod tests {
+  use bip39::Language;
   use {
     super::*,
     bitcoin::secp256k1::rand::{self, RngCore},

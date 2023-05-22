@@ -1,3 +1,7 @@
+use bitcoin::consensus::encode::serialize_hex;
+use bitcoin::consensus::serialize;
+use bitcoin::psbt::Psbt;
+use bitcoincore_rpc::RawTx;
 use {
   super::*,
   bitcoin::{
@@ -16,9 +20,10 @@ use {
 
 #[derive(Serialize)]
 struct Output {
-  commit: Transaction,
+  commit: String,
+  commit_psbt: String,
   inscription: InscriptionId,
-  reveal: Transaction,
+  reveal: String,
   fees: u64,
 }
 
@@ -93,8 +98,9 @@ impl MintBrc20 {
       Self::calculate_fee(&unsigned_commit_tx, &utxos) + Self::calculate_fee(&reveal_tx, &utxos);
 
     print_json(Output {
-        commit: unsigned_commit_tx,
-        reveal: reveal_tx.clone(),
+        commit: unsigned_commit_tx.clone().raw_hex(),
+        commit_psbt: serialize_hex(&Psbt::from_unsigned_tx(unsigned_commit_tx.clone()).unwrap()),
+        reveal: reveal_tx.clone().raw_hex(),
         inscription: reveal_tx.txid().into(),
         fees,
       })?;

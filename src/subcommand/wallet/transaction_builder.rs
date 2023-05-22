@@ -192,9 +192,9 @@ impl TransactionBuilder {
       return Err(Error::DuplicateAddress(recipient));
     }
 
-    if change[0] == change[1] {
-      return Err(Error::DuplicateAddress(change[0].clone()));
-    }
+    // if change[0] == change[1] {
+    //   return Err(Error::DuplicateAddress(change[0].clone()));
+    // }
 
     Ok(Self {
       utxos: amounts.keys().cloned().collect(),
