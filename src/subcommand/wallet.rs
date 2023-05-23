@@ -95,9 +95,7 @@ pub(crate) fn initialize_wallet(options: &Options, seed: [u8; 64]) -> Result {
 
   let derivation_path = DerivationPath::master()
     .child(ChildNumber::Hardened { index: 86 })
-    .child(ChildNumber::Hardened {
-      index: 0,
-    })
+    .child(ChildNumber::Hardened { index: 0 })
     .child(ChildNumber::Hardened { index: 0 });
 
   let derived_private_key = master_private_key.derive_priv(&secp, &derivation_path)?;

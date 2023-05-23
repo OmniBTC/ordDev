@@ -14,9 +14,9 @@ use {
   indicatif::{ProgressBar, ProgressStyle},
   log::log_enabled,
   redb::{Database, ReadableTable, Table, TableDefinition, WriteStrategy, WriteTransaction},
+  reqwest,
   std::collections::HashMap,
   std::sync::atomic::{self, AtomicBool},
-  reqwest,
 };
 
 mod entry;
@@ -2274,10 +2274,12 @@ mod tests {
       crate::subcommand::wallet::initialize_wallet(&context.options, mnemonic.to_seed("")).unwrap();
       context.rpc_server.mine_blocks(1);
       let result = context
-          .index
-          .get_unspent_outputs_by_mempool("tb1phsaern0qpcpqpv2h6cmu6fgae4y0lyx2tqhmqmgvv7c9whffm3rqjmlrqs")
-          .unwrap_err()
-          .to_string();
+        .index
+        .get_unspent_outputs_by_mempool(
+          "tb1phsaern0qpcpqpv2h6cmu6fgae4y0lyx2tqhmqmgvv7c9whffm3rqjmlrqs",
+        )
+        .unwrap_err()
+        .to_string();
       assert_regex_match!(
         result,
         r"output in Bitcoin Core wallet but not in ord index: [[:xdigit:]]{64}:\d+"
