@@ -1,5 +1,4 @@
 use bitcoin::consensus::encode::serialize_hex;
-use bitcoin::consensus::serialize;
 use bitcoin::psbt::Psbt;
 use bitcoincore_rpc::RawTx;
 use {
@@ -71,7 +70,7 @@ impl MintBrc20 {
 
     let reveal_tx_destination = self
       .destination
-      .unwrap_or_else(|| source);
+      .unwrap_or_else(|| source.clone());
 
     let (unsigned_commit_tx, reveal_tx, _recovery_key_pair) =
       MintBrc20::create_inscription_transactions(
@@ -97,9 +96,19 @@ impl MintBrc20 {
     let fees =
       Self::calculate_fee(&unsigned_commit_tx, &utxos) + Self::calculate_fee(&reveal_tx, &utxos);
 
+    let mut commit_psbt = Psbt::from_unsigned_tx(unsigned_commit_tx.clone()).unwrap();
+    for i in 0..commit_psbt.unsigned_tx.input.len(){
+      commit_psbt.inputs[i].witness_utxo = Some(
+        TxOut{
+          value: utxos.get(&commit_psbt.unsigned_tx.input[i].previous_output).ok_or_else(|| anyhow!("wallet contains no cardinal utxos"))?.to_sat(),
+          script_pubkey: source.script_pubkey()
+        }
+      );
+    }
+
     print_json(Output {
         commit: unsigned_commit_tx.clone().raw_hex(),
-        commit_psbt: serialize_hex(&Psbt::from_unsigned_tx(unsigned_commit_tx.clone()).unwrap()),
+        commit_psbt: serialize_hex(&commit_psbt),
         reveal: reveal_tx.clone().raw_hex(),
         inscription: reveal_tx.txid().into(),
         fees,
