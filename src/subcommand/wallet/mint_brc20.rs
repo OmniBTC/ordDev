@@ -29,17 +29,21 @@ struct Output {
 pub(crate) struct MintBrc20 {
   #[clap(long, help = "Use fee rate of <FEE_RATE> sats/vB")]
   pub(crate) fee_rate: FeeRate,
-  #[clap(help = "MintBrc20 sat with contents of <FILE>")]
-  pub(crate) file: PathBuf,
   #[clap(long, help = "Send inscription to <DESTINATION>.")]
   pub(crate) destination: Option<Address>,
   #[clap(long, help = "Send inscription from <SOURCE>.")]
   pub(crate) source: Address,
+  #[clap(long, help = "Content type of mint, default .txt.")]
+  pub(crate) extension: Option<String>,
+  #[clap(long, help = "Content of mint.[.txt|]")]
+  pub(crate) content: String,
 }
 
 impl MintBrc20 {
   pub(crate) fn run(self, options: Options) -> Result {
-    let inscription = Inscription::from_file(options.chain(), &self.file)?;
+    let extension = "data.".to_owned() + &self.extension.unwrap_or(".txt".to_owned());
+
+    let inscription = Inscription::from_content(options.chain(), &extension, self.content)?;
 
     let index = Index::open(&options)?;
     index.update()?;

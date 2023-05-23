@@ -32,6 +32,28 @@ impl Inscription {
     InscriptionParser::parse(&tx.input.get(0)?.witness).ok()
   }
 
+  pub(crate) fn from_content(
+    chain: Chain,
+    extension: &str,
+    content: String,
+  ) -> Result<Self, Error> {
+    let body = content.as_bytes().to_vec();
+
+    if let Some(limit) = chain.inscription_content_size_limit() {
+      let len = body.len();
+      if len > limit {
+        bail!("content size of {len} bytes exceeds {limit} byte limit for {chain} inscriptions");
+      }
+    }
+
+    let content_type = Media::content_type_for_path(Path::new(extension))?;
+
+    Ok(Self {
+      body: Some(body),
+      content_type: Some(content_type.into()),
+    })
+  }
+
   pub(crate) fn from_file(chain: Chain, path: impl AsRef<Path>) -> Result<Self, Error> {
     let path = path.as_ref();
 
