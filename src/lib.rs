@@ -109,7 +109,7 @@ mod inscription;
 mod inscription_id;
 mod media;
 mod object;
-mod options;
+pub mod options;
 mod outgoing;
 mod page_config;
 mod rarity;

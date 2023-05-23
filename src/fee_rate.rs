@@ -22,6 +22,12 @@ impl TryFrom<f64> for FeeRate {
   }
 }
 
+impl From<u64> for FeeRate {
+  fn from(rate: u64) -> Self {
+    Self(rate as f64)
+  }
+}
+
 impl FeeRate {
   pub(crate) fn fee(&self, vsize: usize) -> Amount {
     #[allow(clippy::cast_possible_truncation)]
