@@ -20,7 +20,6 @@ use {
 #[derive(Serialize)]
 struct Output {
   commit: String,
-  commit_psbt: String,
   inscription: InscriptionId,
   reveal: String,
   fees: u64,
@@ -94,11 +93,11 @@ impl MintBrc20 {
     let fees =
       Self::calculate_fee(&unsigned_commit_tx, &utxos) + Self::calculate_fee(&reveal_tx, &utxos);
 
-    let mut commit_psbt = Psbt::from_unsigned_tx(unsigned_commit_tx.clone()).unwrap();
-    for i in 0..commit_psbt.unsigned_tx.input.len() {
-      commit_psbt.inputs[i].witness_utxo = Some(TxOut {
+    let mut unsigned_commit_psbt = Psbt::from_unsigned_tx(unsigned_commit_tx.clone())?;
+    for i in 0..unsigned_commit_psbt.unsigned_tx.input.len() {
+      unsigned_commit_psbt.inputs[i].witness_utxo = Some(TxOut {
         value: utxos
-          .get(&commit_psbt.unsigned_tx.input[i].previous_output)
+          .get(&unsigned_commit_psbt.unsigned_tx.input[i].previous_output)
           .ok_or_else(|| anyhow!("wallet contains no cardinal utxos"))?
           .to_sat(),
         script_pubkey: source.script_pubkey(),
@@ -106,8 +105,7 @@ impl MintBrc20 {
     }
 
     print_json(Output {
-      commit: unsigned_commit_tx.clone().raw_hex(),
-      commit_psbt: serialize_hex(&commit_psbt),
+      commit: serialize_hex(&unsigned_commit_psbt),
       reveal: reveal_tx.clone().raw_hex(),
       inscription: reveal_tx.txid().into(),
       fees,
@@ -482,7 +480,7 @@ mod tests {
       satpoint,
       inscription,
       inscriptions,
-      bitcoin::Network::Signet,
+      Network::Signet,
       utxos.into_iter().collect(),
       [commit_address, change(1)],
       reveal_address,
@@ -544,7 +542,7 @@ mod tests {
       satpoint,
       inscription,
       inscriptions,
-      bitcoin::Network::Signet,
+      Network::Signet,
       utxos.into_iter().collect(),
       [commit_address, change(1)],
       reveal_address,
