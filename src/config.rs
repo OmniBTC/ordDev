@@ -2,14 +2,14 @@ use super::*;
 
 #[derive(Deserialize, Default, PartialEq, Debug)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct Config {
-  pub(crate) hidden: HashSet<InscriptionId>,
-  pub(crate) bitcoin_rpc_pass: Option<String>,
-  pub(crate) bitcoin_rpc_user: Option<String>,
+pub struct Config {
+  pub hidden: HashSet<InscriptionId>,
+  pub bitcoin_rpc_pass: Option<String>,
+  pub bitcoin_rpc_user: Option<String>,
 }
 
 impl Config {
-  pub(crate) fn is_hidden(&self, inscription_id: InscriptionId) -> bool {
+  pub fn is_hidden(&self, inscription_id: InscriptionId) -> bool {
     self.hidden.contains(&inscription_id)
   }
 }

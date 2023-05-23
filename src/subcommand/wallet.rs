@@ -19,7 +19,7 @@ pub mod cardinals;
 pub mod create;
 pub(crate) mod inscribe;
 pub mod inscriptions;
-pub(crate) mod mint_brc20;
+pub mod mint_brc20;
 pub mod outputs;
 pub mod receive;
 mod restore;

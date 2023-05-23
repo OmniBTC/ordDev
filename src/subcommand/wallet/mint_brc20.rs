@@ -18,29 +18,29 @@ use {
 };
 
 #[derive(Serialize)]
-struct Output {
-  commit: String,
-  inscription: InscriptionId,
-  reveal: String,
-  fees: u64,
+pub struct Output {
+  pub commit: String,
+  pub inscription: InscriptionId,
+  pub reveal: String,
+  pub fees: u64,
 }
 
 #[derive(Debug, Parser)]
-pub(crate) struct MintBrc20 {
+pub struct MintBrc20 {
   #[clap(long, help = "Use fee rate of <FEE_RATE> sats/vB")]
-  pub(crate) fee_rate: FeeRate,
+  pub fee_rate: FeeRate,
   #[clap(long, help = "Send inscription to <DESTINATION>.")]
-  pub(crate) destination: Option<Address>,
+  pub destination: Option<Address>,
   #[clap(long, help = "Send inscription from <SOURCE>.")]
-  pub(crate) source: Address,
+  pub source: Address,
   #[clap(long, help = "Content type of mint, default .txt.")]
-  pub(crate) extension: Option<String>,
+  pub extension: Option<String>,
   #[clap(long, help = "Content of mint.[.txt|]")]
-  pub(crate) content: String,
+  pub content: String,
 }
 
 impl MintBrc20 {
-  pub(crate) fn run(self, options: Options) -> Result {
+  pub fn build(self, options: Options) -> Result<Output> {
     let extension = "data.".to_owned() + &self.extension.unwrap_or(".txt".to_owned());
 
     let inscription = Inscription::from_content(options.chain(), &extension, self.content)?;
@@ -92,12 +92,17 @@ impl MintBrc20 {
       });
     }
 
-    print_json(Output {
+    let output = Output {
       commit: serialize_hex(&unsigned_commit_psbt),
       reveal: reveal_tx.clone().raw_hex(),
       inscription: reveal_tx.txid().into(),
       fees,
-    })?;
+    };
+    Ok(output)
+  }
+
+  pub fn run(self, options: Options) -> Result {
+    print_json(self.build(options)?)?;
     Ok(())
   }
 

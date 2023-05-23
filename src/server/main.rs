@@ -4,6 +4,7 @@ use hyper::{Body, Request, Response, Method, StatusCode};
 use hyper::server::Server;
 use hyper::service::{make_service_fn, service_fn};
 use serde::{Deserialize, Serialize};
+use ord::subcommand::wallet::mint_brc20::MintBrc20;
 
 #[derive(Clone, PartialEq, Eq, Debug, Deserialize, Serialize)]
 struct MintBrc20Param {
@@ -40,6 +41,10 @@ async fn handle_request(req: Request<Body>) -> Result<Response<Body>, hyper::Err
           return Ok(Response::new(Body::from("Invalid form data")));
         }
       };
+
+      // MintBrc20{
+      //
+      // };
 
       println!("{:?}", form_data);
 
