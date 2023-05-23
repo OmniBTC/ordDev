@@ -68,6 +68,10 @@ unindent = "0.2.1"
 name = "ord"
 path = "src/bin/main.rs"
 
+[[bin]]
+name = "ord_server"
+path = "src/server/main.rs"
+
 [lib]
 name = "ord"
 path = "src/lib.rs"
