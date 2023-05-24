@@ -101,7 +101,7 @@ impl MintBrc20 {
       inscription: reveal_txs.into_iter().map(|tx| tx.txid().into()).collect(),
       service_fee,
       satpoint_fee,
-      network_fee
+      network_fee,
     };
     Ok(output)
   }
@@ -253,6 +253,7 @@ impl MintBrc20 {
     reveal_fees.reverse();
     next_remain_fees.reverse();
 
+
     let unsigned_commit_tx = TransactionBuilder::build_transaction_with_value(
       satpoint,
       inscriptions,
@@ -261,8 +262,9 @@ impl MintBrc20 {
       change,
       commit_fee_rate,
       reveal_fees[0]
+        + TransactionBuilder::TARGET_POSTAGE
         + *next_remain_fees.get(0).unwrap_or(&Amount::ZERO)
-        + TransactionBuilder::TARGET_POSTAGE * (repeat as u64),
+        + (MintBrc20::SERVICE_FEE * (repeat.clone() as u64)),
     )?;
 
     let (vout, output) = unsigned_commit_tx
