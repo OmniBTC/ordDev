@@ -104,14 +104,6 @@ async fn handle_request(
 async fn main() {
   let args = Command::new("Brc20 Server")
     .arg(
-      Arg::new("port")
-        .short('v')
-        .long("port")
-        .takes_value(true)
-        .default_value("3080")
-        .help("Sets the port number"),
-    )
-    .arg(
       Arg::new("chain")
         .long("chain")
         .takes_value(true)
@@ -120,7 +112,6 @@ async fn main() {
     );
 
   let matches = args.get_matches();
-  // let port = matches.get_one("port").unwrap();
   let chain = matches
     .get_one::<String>("chain")
     .map(|s| s.as_str())
@@ -130,7 +121,7 @@ async fn main() {
     _ => Chain::Testnet,
   };
 
-  let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
+  let addr = SocketAddr::from(([127, 0, 0, 1], 3080));
   let make_svc = make_service_fn(move |_conn| {
     let chain_argument = chain_argument.clone();
     async move {
@@ -141,7 +132,7 @@ async fn main() {
   });
 
   let server = Server::bind(&addr).serve(make_svc);
-  println!("Server running at http://{}", addr);
+  println!("Server running at http://{}, network:{:?}", addr, chain_argument);
 
   if let Err(e) = server.await {
     eprintln!("Server error: {}", e);
