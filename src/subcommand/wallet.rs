@@ -20,6 +20,7 @@ pub mod create;
 pub(crate) mod inscribe;
 pub mod inscriptions;
 pub mod mint;
+pub mod transfer;
 pub mod outputs;
 pub mod receive;
 mod restore;
@@ -36,7 +37,9 @@ pub(crate) enum Wallet {
   Create(create::Create),
   #[clap(about = "Create inscription")]
   Inscribe(inscribe::Inscribe),
-  #[clap(about = "Create inscription")]
+  #[clap(about = "Transfer inscription|amount|satpoint")]
+  Transfer(transfer::Transfer),
+  #[clap(about = "Mint inscription")]
   Mint(mint::Mint),
   #[clap(about = "List wallet inscriptions")]
   Inscriptions,
@@ -62,6 +65,7 @@ impl Wallet {
       Self::Balance => balance::run(options),
       Self::Create(create) => create.run(options),
       Self::Inscribe(inscribe) => inscribe.run(options),
+      Self::Transfer(transfer) => transfer.run(options),
       Self::Mint(mint) => mint.run(options),
       Self::Inscriptions => inscriptions::run(options),
       Self::Receive => receive::run(options),
