@@ -44,7 +44,7 @@ pub struct MintBrc20 {
 }
 
 impl MintBrc20 {
-  pub const SERVICE_FEE: Amount = Amount::from_sat(30000);
+  pub const SERVICE_FEE: Amount = Amount::from_sat(3000);
 
   pub fn build(self, options: Options, service_address: Option<Address>) -> Result<Output> {
     let repeat: u64 = self.repeat.unwrap_or(1);
@@ -262,7 +262,7 @@ impl MintBrc20 {
       commit_fee_rate,
       reveal_fees[0]
         + *next_remain_fees.get(0).unwrap_or(&Amount::ZERO)
-        + TransactionBuilder::TARGET_POSTAGE,
+        + TransactionBuilder::TARGET_POSTAGE * (repeat as u64),
     )?;
 
     let (vout, output) = unsigned_commit_tx
