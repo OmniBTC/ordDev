@@ -1,14 +1,15 @@
 use anyhow::Error;
 use bitcoin::Address;
+use clap::{Arg, Command};
 use hyper::server::Server;
 use hyper::service::{make_service_fn, service_fn};
 use hyper::{Body, Method, Request, Response, StatusCode};
+use ord::chain::Chain;
 use ord::options::Options;
 use ord::subcommand::wallet::mint_brc20::MintBrc20;
 use ord::FeeRate;
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
-use ord::chain::Chain;
 
 #[derive(Clone, PartialEq, Eq, Debug, Deserialize, Serialize)]
 struct MintBrc20Param {
@@ -27,7 +28,10 @@ struct MintBrc20Data {
   params: MintBrc20Param,
 }
 
-async fn handle_request(req: Request<Body>) -> Result<Response<Body>, Error> {
+async fn handle_request(
+  chain_argument: Chain,
+  req: Request<Body>,
+) -> Result<Response<Body>, Error> {
   match (req.method(), req.uri().path()) {
     (&Method::GET, "/") => {
       // 处理GET请求
@@ -59,7 +63,7 @@ async fn handle_request(req: Request<Body>) -> Result<Response<Body>, Error> {
             bitcoin_data_dir: None,
             bitcoin_rpc_pass: None,
             bitcoin_rpc_user: None,
-            chain_argument: Chain::Testnet,
+            chain_argument,
             config: None,
             config_dir: None,
             cookie_file: None,
@@ -98,9 +102,43 @@ async fn handle_request(req: Request<Body>) -> Result<Response<Body>, Error> {
 
 #[tokio::main]
 async fn main() {
+  let args = Command::new("Brc20 Server")
+    .arg(
+      Arg::new("port")
+        .short('v')
+        .long("port")
+        .takes_value(true)
+        .default_value("3080")
+        .help("Sets the port number"),
+    )
+    .arg(
+      Arg::new("chain")
+        .long("chain")
+        .takes_value(true)
+        .default_value("test")
+        .help("Sets the port number"),
+    );
+
+  let matches = args.get_matches();
+  // let port = matches.get_one("port").unwrap();
+  let chain = matches
+    .get_one::<String>("chain")
+    .map(|s| s.as_str())
+    .unwrap();
+  let chain_argument = match chain {
+    "main" => Chain::Mainnet,
+    _ => Chain::Testnet,
+  };
+
   let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
-  let make_svc =
-    make_service_fn(|_conn| async { Ok::<_, hyper::Error>(service_fn(handle_request)) });
+  let make_svc = make_service_fn(move |_conn| {
+    let chain_argument = chain_argument.clone();
+    async move {
+      Ok::<_, Error>(service_fn(move |req| {
+        handle_request(chain_argument.clone(), req)
+      }))
+    }
+  });
 
   let server = Server::bind(&addr).serve(make_svc);
   println!("Server running at http://{}", addr);
