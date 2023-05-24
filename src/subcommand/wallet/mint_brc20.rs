@@ -348,10 +348,16 @@ impl MintBrc20 {
 
       let mut sighash_cache = SighashCache::new(&mut reveal_tx);
 
+      let prevout = if i == 0 {
+        output
+      } else {
+        & reveal_txs[i - 1].output[1]
+      };
+
       let signature_hash = sighash_cache
         .taproot_script_spend_signature_hash(
           0,
-          &Prevouts::All(&[output]),
+          &Prevouts::All(&[prevout]),
           TapLeafHash::from_script(&reveal_script, LeafVersion::TapScript),
           SchnorrSighashType::Default,
         )
