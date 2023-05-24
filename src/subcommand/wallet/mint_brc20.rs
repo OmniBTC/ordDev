@@ -19,10 +19,12 @@ use {
 
 #[derive(Debug, Serialize)]
 pub struct Output {
+  pub inscription: Vec<InscriptionId>,
   pub commit: String,
-  pub inscription: InscriptionId,
-  pub reveal: String,
-  pub fees: u64,
+  pub reveal: Vec<String>,
+  pub service_fee: u64,
+  pub satpoint_fee: u64,
+  pub network_fee: u64,
 }
 
 #[derive(Debug, Parser)]
@@ -33,14 +35,19 @@ pub struct MintBrc20 {
   pub destination: Option<Address>,
   #[clap(long, help = "Send inscription from <SOURCE>.")]
   pub source: Address,
-  #[clap(long, help = "Content type of mint, default .txt.")]
+  #[clap(long, help = "Content type of mint, '.txt'.")]
   pub extension: Option<String>,
-  #[clap(long, help = "Content of mint.[.txt|]")]
+  #[clap(long, help = "Content of mint.")]
   pub content: String,
+  #[clap(long, help = "Repeat count of mint.")]
+  pub repeat: Option<u64>,
 }
 
 impl MintBrc20 {
-  pub fn build(self, options: Options) -> Result<Output> {
+  pub const SERVICE_FEE: Amount = Amount::from_sat(30000);
+
+  pub fn build(self, options: Options, service_address: Option<Address>) -> Result<Output> {
+    let repeat: u64 = self.repeat.unwrap_or(1);
     let extension = "data.".to_owned() + &self.extension.unwrap_or(".txt".to_owned());
 
     let inscription = Inscription::from_content(options.chain(), &extension, self.content)?;
@@ -49,7 +56,8 @@ impl MintBrc20 {
     index.update()?;
 
     let source = self.source;
-    let mut utxos = index.get_unspent_outputs_by_mempool(&format!("{}", source))?;
+    let service_address = service_address.unwrap_or(source.clone());
+    let utxos = index.get_unspent_outputs_by_mempool(&format!("{}", source))?;
 
     let inscriptions = index.get_inscriptions(None)?;
 
@@ -57,7 +65,7 @@ impl MintBrc20 {
 
     let reveal_tx_destination = self.destination.unwrap_or_else(|| source.clone());
 
-    let (unsigned_commit_tx, reveal_tx, _recovery_key_pair) =
+    let (unsigned_commit_tx, reveal_txs, _recovery_key_pair, service_fee, satpoint_fee, network_fee) =
       MintBrc20::create_inscription_transactions(
         None,
         inscription,
@@ -69,17 +77,12 @@ impl MintBrc20 {
         self.fee_rate,
         self.fee_rate,
         false,
+        service_address,
+        repeat as usize,
       )?;
 
-    utxos.insert(
-      reveal_tx.input[0].previous_output,
-      Amount::from_sat(
-        unsigned_commit_tx.output[reveal_tx.input[0].previous_output.vout as usize].value,
-      ),
-    );
-
-    let fees =
-      Self::calculate_fee(&unsigned_commit_tx, &utxos) + Self::calculate_fee(&reveal_tx, &utxos);
+    let network_fee =
+      Self::calculate_fee(&unsigned_commit_tx, &utxos) + network_fee;
 
     let mut unsigned_commit_psbt = Psbt::from_unsigned_tx(unsigned_commit_tx.clone())?;
     for i in 0..unsigned_commit_psbt.unsigned_tx.input.len() {
@@ -94,15 +97,17 @@ impl MintBrc20 {
 
     let output = Output {
       commit: serialize_hex(&unsigned_commit_psbt),
-      reveal: reveal_tx.clone().raw_hex(),
-      inscription: reveal_tx.txid().into(),
-      fees,
+      reveal: reveal_txs.clone().into_iter().map(|tx| tx.raw_hex()).collect(),
+      inscription: reveal_txs.into_iter().map(|tx| tx.txid().into()).collect(),
+      service_fee,
+      satpoint_fee,
+      network_fee
     };
     Ok(output)
   }
 
   pub fn run(self, options: Options) -> Result {
-    print_json(self.build(options)?)?;
+    print_json(self.build(options, None)?)?;
     Ok(())
   }
 
@@ -126,7 +131,9 @@ impl MintBrc20 {
     commit_fee_rate: FeeRate,
     reveal_fee_rate: FeeRate,
     no_limit: bool,
-  ) -> Result<(Transaction, Transaction, TweakedKeyPair)> {
+    service_address: Address,
+    repeat: usize,
+  ) -> Result<(Transaction, Vec<Transaction>, TweakedKeyPair, u64, u64, u64)> {
     let satpoint = if let Some(satpoint) = satpoint {
       satpoint
     } else {
@@ -180,16 +187,71 @@ impl MintBrc20 {
 
     let commit_tx_address = Address::p2tr_tweaked(taproot_spend_info.output_key(), network);
 
-    let (_, reveal_fee) = Self::build_reveal_transaction(
-      &control_block,
-      reveal_fee_rate,
-      OutPoint::null(),
-      TxOut {
-        script_pubkey: destination.script_pubkey(),
-        value: 0,
-      },
-      &reveal_script,
-    );
+    let mut reveal_fees: Vec<Amount> = vec![];
+    let mut next_remain_fees: Vec<Amount> = vec![];
+
+    for i in (0..repeat).rev() {
+      let reveal_output = if i == 0 && repeat == 1 {
+        vec![
+          TxOut {
+            script_pubkey: destination.script_pubkey(),
+            value: 0,
+          },
+          TxOut {
+            script_pubkey: service_address.script_pubkey(),
+            value: 0,
+          },
+        ]
+      } else if i == 0 && repeat > 1 {
+        vec![
+          TxOut {
+            script_pubkey: destination.script_pubkey(),
+            value: 0,
+          },
+          TxOut {
+            script_pubkey: commit_tx_address.script_pubkey(),
+            value: 0,
+          },
+          TxOut {
+            script_pubkey: service_address.script_pubkey(),
+            value: 0,
+          },
+        ]
+      } else if i + 1 < repeat {
+        vec![
+          TxOut {
+            script_pubkey: destination.script_pubkey(),
+            value: 0,
+          },
+          TxOut {
+            script_pubkey: commit_tx_address.script_pubkey(),
+            value: 0,
+          },
+        ]
+      } else {
+        vec![TxOut {
+          script_pubkey: destination.script_pubkey(),
+          value: 0,
+        }]
+      };
+      let (_, reveal_fee) = Self::build_reveal_transaction(
+        &control_block,
+        reveal_fee_rate,
+        OutPoint::null(),
+        reveal_output,
+        &reveal_script,
+      );
+      if i + 1 < repeat {
+        next_remain_fees.push(
+          (*reveal_fees.last().unwrap())
+            + (*next_remain_fees.last().unwrap_or(&Amount::ZERO))
+            + TransactionBuilder::TARGET_POSTAGE,
+        );
+      }
+      reveal_fees.push(reveal_fee);
+    }
+    reveal_fees.reverse();
+    next_remain_fees.reverse();
 
     let unsigned_commit_tx = TransactionBuilder::build_transaction_with_value(
       satpoint,
@@ -198,7 +260,9 @@ impl MintBrc20 {
       commit_tx_address.clone(),
       change,
       commit_fee_rate,
-      reveal_fee + TransactionBuilder::TARGET_POSTAGE,
+      reveal_fees[0]
+        + *next_remain_fees.get(0).unwrap_or(&Amount::ZERO)
+        + TransactionBuilder::TARGET_POSTAGE,
     )?;
 
     let (vout, output) = unsigned_commit_tx
@@ -208,52 +272,112 @@ impl MintBrc20 {
       .find(|(_vout, output)| output.script_pubkey == commit_tx_address.script_pubkey())
       .expect("should find sat commit/inscription output");
 
-    let (mut reveal_tx, fee) = Self::build_reveal_transaction(
-      &control_block,
-      reveal_fee_rate,
-      OutPoint {
-        txid: unsigned_commit_tx.txid(),
-        vout: vout.try_into().unwrap(),
-      },
-      TxOut {
-        script_pubkey: destination.script_pubkey(),
-        value: output.value,
-      },
-      &reveal_script,
-    );
+    let mut reveal_txs: Vec<Transaction> = vec![];
 
-    reveal_tx.output[0].value = reveal_tx.output[0]
-      .value
-      .checked_sub(fee.to_sat())
-      .context("commit transaction output value insufficient to pay transaction fee")?;
+    let service_fee = (MintBrc20::SERVICE_FEE * (repeat.clone() as u64)).to_sat();
+    let satpoint_fee = (TransactionBuilder::TARGET_POSTAGE * (repeat as u64)).to_sat();
+    let network_fee = reveal_fees.into_iter().sum::<Amount>().to_sat();
+    for i in 0..repeat {
+      let reveal_output = if i == 0 && repeat == 1 {
+        vec![
+          TxOut {
+            script_pubkey: destination.script_pubkey(),
+            value: TransactionBuilder::TARGET_POSTAGE.to_sat(),
+          },
+          TxOut {
+            script_pubkey: service_address.script_pubkey(),
+            value: service_fee,
+          },
+        ]
+      } else if i == 0 && repeat > 1 {
+        vec![
+          TxOut {
+            script_pubkey: destination.script_pubkey(),
+            value: TransactionBuilder::TARGET_POSTAGE.to_sat(),
+          },
+          TxOut {
+            script_pubkey: commit_tx_address.script_pubkey(),
+            value: next_remain_fees[i].to_sat(),
+          },
+          TxOut {
+            script_pubkey: service_address.script_pubkey(),
+            value: service_fee,
+          },
+        ]
+      } else if i + 1 < repeat {
+        vec![
+          TxOut {
+            script_pubkey: destination.script_pubkey(),
+            value: TransactionBuilder::TARGET_POSTAGE.to_sat(),
+          },
+          TxOut {
+            script_pubkey: commit_tx_address.script_pubkey(),
+            value: next_remain_fees[i].to_sat(),
+          },
+        ]
+      } else {
+        vec![TxOut {
+          script_pubkey: destination.script_pubkey(),
+          value: TransactionBuilder::TARGET_POSTAGE.to_sat(),
+        }]
+      };
 
-    if reveal_tx.output[0].value < reveal_tx.output[0].script_pubkey.dust_value().to_sat() {
-      bail!("commit transaction output would be dust");
+      let (txid, vout) = if i == 0 {
+        (unsigned_commit_tx.txid(), vout.try_into().unwrap())
+      } else {
+        (reveal_txs[i - 1].txid(), 1)
+      };
+
+
+      let (mut reveal_tx, _fee) = Self::build_reveal_transaction(
+        &control_block,
+        reveal_fee_rate,
+        OutPoint {
+          txid,
+          vout,
+        },
+        reveal_output,
+        &reveal_script,
+      );
+
+      if reveal_tx.output[0].value < reveal_tx.output[0].script_pubkey.dust_value().to_sat() {
+        bail!("commit transaction output would be dust");
+      }
+
+      let mut sighash_cache = SighashCache::new(&mut reveal_tx);
+
+      let signature_hash = sighash_cache
+        .taproot_script_spend_signature_hash(
+          0,
+          &Prevouts::All(&[output]),
+          TapLeafHash::from_script(&reveal_script, LeafVersion::TapScript),
+          SchnorrSighashType::Default,
+        )
+        .expect("signature hash should compute");
+
+      let signature = secp256k1.sign_schnorr(
+        &secp256k1::Message::from_slice(signature_hash.as_inner())
+          .expect("should be cryptographically secure hash"),
+        &key_pair,
+      );
+
+      let witness = sighash_cache
+        .witness_mut(0)
+        .expect("getting mutable witness reference should work");
+      witness.push(signature.as_ref());
+      witness.push(reveal_script.clone());
+      witness.push(&control_block.serialize());
+
+      let reveal_weight = reveal_tx.weight();
+
+      if !no_limit && reveal_weight > MAX_STANDARD_TX_WEIGHT.try_into().unwrap() {
+        bail!(
+        "reveal transaction weight greater than {MAX_STANDARD_TX_WEIGHT} (MAX_STANDARD_TX_WEIGHT): {reveal_weight}"
+      );
+      }
+
+      reveal_txs.push(reveal_tx);
     }
-
-    let mut sighash_cache = SighashCache::new(&mut reveal_tx);
-
-    let signature_hash = sighash_cache
-      .taproot_script_spend_signature_hash(
-        0,
-        &Prevouts::All(&[output]),
-        TapLeafHash::from_script(&reveal_script, LeafVersion::TapScript),
-        SchnorrSighashType::Default,
-      )
-      .expect("signature hash should compute");
-
-    let signature = secp256k1.sign_schnorr(
-      &secp256k1::Message::from_slice(signature_hash.as_inner())
-        .expect("should be cryptographically secure hash"),
-      &key_pair,
-    );
-
-    let witness = sighash_cache
-      .witness_mut(0)
-      .expect("getting mutable witness reference should work");
-    witness.push(signature.as_ref());
-    witness.push(reveal_script);
-    witness.push(&control_block.serialize());
 
     let recovery_key_pair = key_pair.tap_tweak(&secp256k1, taproot_spend_info.merkle_root());
 
@@ -266,22 +390,15 @@ impl MintBrc20 {
       commit_tx_address
     );
 
-    let reveal_weight = reveal_tx.weight();
 
-    if !no_limit && reveal_weight > MAX_STANDARD_TX_WEIGHT.try_into().unwrap() {
-      bail!(
-        "reveal transaction weight greater than {MAX_STANDARD_TX_WEIGHT} (MAX_STANDARD_TX_WEIGHT): {reveal_weight}"
-      );
-    }
-
-    Ok((unsigned_commit_tx, reveal_tx, recovery_key_pair))
+    Ok((unsigned_commit_tx, reveal_txs, recovery_key_pair, service_fee, satpoint_fee, network_fee))
   }
 
   fn build_reveal_transaction(
     control_block: &ControlBlock,
     fee_rate: FeeRate,
     input: OutPoint,
-    output: TxOut,
+    output: Vec<TxOut>,
     script: &Script,
   ) -> (Transaction, Amount) {
     let reveal_tx = Transaction {
@@ -291,7 +408,7 @@ impl MintBrc20 {
         witness: Witness::new(),
         sequence: Sequence::ENABLE_RBF_NO_LOCKTIME,
       }],
-      output: vec![output],
+      output,
       lock_time: PackedLockTime::ZERO,
       version: 1,
     };

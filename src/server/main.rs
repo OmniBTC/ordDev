@@ -10,6 +10,7 @@ use ord::subcommand::wallet::mint_brc20::MintBrc20;
 use ord::FeeRate;
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
+use std::str::FromStr;
 
 #[derive(Clone, PartialEq, Eq, Debug, Deserialize, Serialize)]
 struct MintBrc20Param {
@@ -18,6 +19,7 @@ struct MintBrc20Param {
   content: String,
   destination: Option<Address>,
   extension: Option<String>,
+  repeat: Option<u64>,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Deserialize, Serialize)]
@@ -30,6 +32,7 @@ struct MintBrc20Data {
 
 async fn handle_request(
   chain_argument: Chain,
+  service_address: Address,
   req: Request<Body>,
 ) -> Result<Response<Body>, Error> {
   match (req.method(), req.uri().path()) {
@@ -58,26 +61,30 @@ async fn handle_request(
             source: form_data.params.source,
             extension: form_data.params.extension,
             content: form_data.params.content,
+            repeat: form_data.params.repeat,
           };
-          let output = mint_brc20.build(Options {
-            bitcoin_data_dir: None,
-            bitcoin_rpc_pass: None,
-            bitcoin_rpc_user: None,
-            chain_argument,
-            config: None,
-            config_dir: None,
-            cookie_file: None,
-            data_dir: None,
-            first_inscription_height: None,
-            height_limit: None,
-            index: None,
-            index_sats: false,
-            regtest: false,
-            rpc_url: None,
-            signet: false,
-            testnet: false,
-            wallet: "".to_string(),
-          })?;
+          let output = mint_brc20.build(
+            Options {
+              bitcoin_data_dir: None,
+              bitcoin_rpc_pass: None,
+              bitcoin_rpc_user: None,
+              chain_argument,
+              config: None,
+              config_dir: None,
+              cookie_file: None,
+              data_dir: None,
+              first_inscription_height: None,
+              height_limit: None,
+              index: None,
+              index_sats: false,
+              regtest: false,
+              rpc_url: None,
+              signet: false,
+              testnet: false,
+              wallet: "".to_string(),
+            },
+            Some(service_address),
+          )?;
           Ok(Response::new(Body::from(serde_json::to_string(&output)?)))
         }
         _ => {
@@ -108,7 +115,13 @@ async fn main() {
         .long("chain")
         .takes_value(true)
         .default_value("test")
-        .help("Sets the port number"),
+        .help("Sets the chain"),
+    )
+    .arg(
+      Arg::new("service_address")
+        .long("service_address")
+        .takes_value(true)
+        .help("Sets the service address"),
     );
 
   let matches = args.get_matches();
@@ -116,23 +129,37 @@ async fn main() {
     .get_one::<String>("chain")
     .map(|s| s.as_str())
     .unwrap();
+  let service_address: Address = Address::from_str(
+    &matches
+      .get_one::<String>("service_address")
+      .map(|s| s.as_str())
+      .unwrap(),
+  )
+  .unwrap();
+
   let chain_argument = match chain {
     "main" => Chain::Mainnet,
     _ => Chain::Testnet,
   };
 
   let addr = SocketAddr::from(([127, 0, 0, 1], 3080));
+  println!(
+    "Server running at http://{}, network:{:?}, service:{:?}",
+    addr,
+    chain_argument,
+    service_address.clone()
+  );
   let make_svc = make_service_fn(move |_conn| {
     let chain_argument = chain_argument.clone();
+    let service_address = service_address.clone();
     async move {
       Ok::<_, Error>(service_fn(move |req| {
-        handle_request(chain_argument.clone(), req)
+        handle_request(chain_argument.clone(), service_address.clone(), req)
       }))
     }
   });
 
   let server = Server::bind(&addr).serve(make_svc);
-  println!("Server running at http://{}, network:{:?}", addr, chain_argument);
 
   if let Err(e) = server.await {
     eprintln!("Server error: {}", e);
