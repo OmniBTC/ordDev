@@ -17,7 +17,7 @@ use {
   std::collections::BTreeSet,
 };
 
-#[derive(Serialize)]
+#[derive(Debug, Serialize)]
 pub struct Output {
   pub commit: String,
   pub inscription: InscriptionId,

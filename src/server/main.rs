@@ -8,6 +8,7 @@ use ord::subcommand::wallet::mint_brc20::MintBrc20;
 use ord::FeeRate;
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
+use ord::chain::Chain;
 
 #[derive(Clone, PartialEq, Eq, Debug, Deserialize, Serialize)]
 struct MintBrc20Param {
@@ -47,7 +48,6 @@ async fn handle_request(req: Request<Body>) -> Result<Response<Body>, Error> {
 
       match form_data.method.as_str() {
         "mint_brc20" => {
-          println!("{:?}", form_data);
           let mint_brc20 = MintBrc20 {
             fee_rate: FeeRate::from(form_data.params.fee_rate),
             destination: form_data.params.destination,
@@ -55,11 +55,11 @@ async fn handle_request(req: Request<Body>) -> Result<Response<Body>, Error> {
             extension: form_data.params.extension,
             content: form_data.params.content,
           };
-          mint_brc20.build(Options {
+          let output = mint_brc20.build(Options {
             bitcoin_data_dir: None,
             bitcoin_rpc_pass: None,
             bitcoin_rpc_user: None,
-            chain_argument: Default::default(),
+            chain_argument: Chain::Testnet,
             config: None,
             config_dir: None,
             cookie_file: None,
@@ -74,7 +74,7 @@ async fn handle_request(req: Request<Body>) -> Result<Response<Body>, Error> {
             testnet: false,
             wallet: "".to_string(),
           })?;
-          Ok(Response::new(Body::from("Form data received")))
+          Ok(Response::new(Body::from(serde_json::to_string(&output)?)))
         }
         _ => {
           let response = Response::builder()
