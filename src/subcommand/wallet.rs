@@ -19,7 +19,7 @@ pub mod cardinals;
 pub mod create;
 pub(crate) mod inscribe;
 pub mod inscriptions;
-pub mod mint_brc20;
+pub mod mint;
 pub mod outputs;
 pub mod receive;
 mod restore;
@@ -37,7 +37,7 @@ pub(crate) enum Wallet {
   #[clap(about = "Create inscription")]
   Inscribe(inscribe::Inscribe),
   #[clap(about = "Create inscription")]
-  MintBrc20(mint_brc20::MintBrc20),
+  Mint(mint::Mint),
   #[clap(about = "List wallet inscriptions")]
   Inscriptions,
   #[clap(about = "Generate receive address")]
@@ -62,7 +62,7 @@ impl Wallet {
       Self::Balance => balance::run(options),
       Self::Create(create) => create.run(options),
       Self::Inscribe(inscribe) => inscribe.run(options),
-      Self::MintBrc20(mint_brc20) => mint_brc20.run(options),
+      Self::Mint(mint) => mint.run(options),
       Self::Inscriptions => inscriptions::run(options),
       Self::Receive => receive::run(options),
       Self::Restore(restore) => restore.run(options),

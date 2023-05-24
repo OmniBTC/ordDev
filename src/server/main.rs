@@ -6,14 +6,14 @@ use hyper::service::{make_service_fn, service_fn};
 use hyper::{Body, Method, Request, Response, StatusCode};
 use ord::chain::Chain;
 use ord::options::Options;
-use ord::subcommand::wallet::mint_brc20::MintBrc20;
+use ord::subcommand::wallet::mint::Mint;
 use ord::FeeRate;
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 use std::str::FromStr;
 
 #[derive(Clone, PartialEq, Eq, Debug, Deserialize, Serialize)]
-struct MintBrc20Param {
+struct MintParam {
   fee_rate: u64,
   source: Address,
   content: String,
@@ -23,11 +23,11 @@ struct MintBrc20Param {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Deserialize, Serialize)]
-struct MintBrc20Data {
+struct MintData {
   jsonrpc: Option<String>,
   id: Option<u32>,
   method: String,
-  params: MintBrc20Param,
+  params: MintParam,
 }
 
 async fn handle_request(
@@ -46,7 +46,7 @@ async fn handle_request(
       let full_body = hyper::body::to_bytes(req.into_body()).await?;
       let decoded_body = String::from_utf8_lossy(&full_body).to_string();
       println!("{}", decoded_body.clone());
-      let form_data: MintBrc20Data = match serde_json::from_str(&decoded_body) {
+      let form_data: MintData = match serde_json::from_str(&decoded_body) {
         Ok(data) => data,
         Err(_) => {
           return Ok(Response::new(Body::from("Invalid form data")));
@@ -54,8 +54,8 @@ async fn handle_request(
       };
 
       match form_data.method.as_str() {
-        "mint_brc20" => {
-          let mint_brc20 = MintBrc20 {
+        "mint" => {
+          let mint = Mint {
             fee_rate: FeeRate::from(form_data.params.fee_rate),
             destination: form_data.params.destination,
             source: form_data.params.source,
@@ -63,7 +63,7 @@ async fn handle_request(
             content: form_data.params.content,
             repeat: form_data.params.repeat,
           };
-          let output = mint_brc20.build(
+          let output = mint.build(
             Options {
               bitcoin_data_dir: None,
               bitcoin_rpc_pass: None,

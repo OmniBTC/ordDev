@@ -28,7 +28,7 @@ pub struct Output {
 }
 
 #[derive(Debug, Parser)]
-pub struct MintBrc20 {
+pub struct Mint {
   #[clap(long, help = "Use fee rate of <FEE_RATE> sats/vB")]
   pub fee_rate: FeeRate,
   #[clap(long, help = "Send inscription to <DESTINATION>.")]
@@ -43,7 +43,7 @@ pub struct MintBrc20 {
   pub repeat: Option<u64>,
 }
 
-impl MintBrc20 {
+impl Mint {
   pub const SERVICE_FEE: Amount = Amount::from_sat(3000);
 
   pub fn build(self, options: Options, service_address: Option<Address>) -> Result<Output> {
@@ -66,7 +66,7 @@ impl MintBrc20 {
     let reveal_tx_destination = self.destination.unwrap_or_else(|| source.clone());
 
     let (unsigned_commit_tx, reveal_txs, _recovery_key_pair, service_fee, satpoint_fee, network_fee) =
-      MintBrc20::create_inscription_transactions(
+      Mint::create_inscription_transactions(
         None,
         inscription,
         inscriptions,
@@ -264,7 +264,7 @@ impl MintBrc20 {
       reveal_fees[0]
         + TransactionBuilder::TARGET_POSTAGE
         + *next_remain_fees.get(0).unwrap_or(&Amount::ZERO)
-        + (MintBrc20::SERVICE_FEE * (repeat.clone() as u64)),
+        + (Mint::SERVICE_FEE * (repeat.clone() as u64)),
     )?;
 
     let (vout, output) = unsigned_commit_tx
@@ -276,7 +276,7 @@ impl MintBrc20 {
 
     let mut reveal_txs: Vec<Transaction> = vec![];
 
-    let service_fee = (MintBrc20::SERVICE_FEE * (repeat.clone() as u64)).to_sat();
+    let service_fee = (Mint::SERVICE_FEE * (repeat.clone() as u64)).to_sat();
     let satpoint_fee = (TransactionBuilder::TARGET_POSTAGE * (repeat as u64)).to_sat();
     let network_fee = reveal_fees.into_iter().sum::<Amount>().to_sat();
     for i in 0..repeat {
