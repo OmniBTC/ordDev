@@ -84,7 +84,7 @@ impl Mint {
       self.fee_rate,
       false,
       service_address,
-      repeat as usize,
+      usize::try_from(repeat)?,
     )?;
 
     let network_fee = Self::calculate_fee(&unsigned_commit_tx, &utxos) + network_fee;
@@ -280,7 +280,7 @@ impl Mint {
       reveal_fees[0]
         + TransactionBuilder::TARGET_POSTAGE
         + *next_remain_fees.get(0).unwrap_or(&Amount::ZERO)
-        + (Mint::SERVICE_FEE * (repeat.clone() as u64)),
+        + (Mint::SERVICE_FEE * (repeat as u64)),
     )?;
 
     let (vout, output) = unsigned_commit_tx
@@ -292,7 +292,7 @@ impl Mint {
 
     let mut reveal_txs: Vec<Transaction> = vec![];
 
-    let service_fee = (Mint::SERVICE_FEE * (repeat.clone() as u64)).to_sat();
+    let service_fee = (Mint::SERVICE_FEE * (repeat as u64)).to_sat();
     let satpoint_fee = (TransactionBuilder::TARGET_POSTAGE * (repeat as u64)).to_sat();
     let network_fee = reveal_fees.into_iter().sum::<Amount>().to_sat();
     for i in 0..repeat {

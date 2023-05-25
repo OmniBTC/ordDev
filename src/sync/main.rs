@@ -1,5 +1,4 @@
 use clap::{Arg, Command};
-use env_logger;
 use log::{error, info};
 use ord::chain::Chain;
 use ord::index::Index;

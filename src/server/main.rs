@@ -1,7 +1,6 @@
 use anyhow::Error;
 use bitcoin::Address;
 use clap::{Arg, Command};
-use env_logger;
 use hyper::server::Server;
 use hyper::service::{make_service_fn, service_fn};
 use hyper::{Body, Method, Request, Response, StatusCode};
@@ -75,7 +74,7 @@ async fn handle_request(
     testnet: false,
     wallet: "".to_string(),
   };
-  match (req.method(), path.get(0)) {
+  match (req.method(), path.first()) {
     (&Method::GET, Some(&"/")) => {
       // 处理GET请求
       let response_body = "Hello, GET request!";
@@ -193,7 +192,7 @@ async fn main() {
     .map(|s| s.as_str())
     .unwrap();
   let service_address: Address = Address::from_str(
-    &matches
+    matches
       .get_one::<String>("service_address")
       .map(|s| s.as_str())
       .unwrap(),
@@ -213,11 +212,10 @@ async fn main() {
     service_address.clone()
   );
   let make_svc = make_service_fn(move |_conn| {
-    let chain_argument = chain_argument.clone();
     let service_address = service_address.clone();
     async move {
       Ok::<_, Error>(service_fn(move |req| {
-        handle_request(chain_argument.clone(), service_address.clone(), req)
+        handle_request(chain_argument, service_address.clone(), req)
       }))
     }
   });

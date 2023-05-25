@@ -97,10 +97,10 @@ impl Transfer {
     let unsigned_transaction_psbt =
       Self::get_psbt(&unsigned_transaction, &unspent_outputs, &self.source)?;
 
-    return Ok(Output {
+    Ok(Output {
       transaction: serialize_hex(&unsigned_transaction_psbt),
       network_fee,
-    });
+    })
   }
 
   pub fn run(self, options: Options) -> Result {
