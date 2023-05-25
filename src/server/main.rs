@@ -75,11 +75,6 @@ async fn handle_request(
     testnet: false,
     wallet: "".to_string(),
   };
-  let client_ip = req
-    .headers()
-    .get("x-forwarded-for")
-    .map(|v| format!("{:?}", v.clone()))
-    .unwrap_or_else(|| String::from("Unknown"));
   match (req.method(), path.get(0)) {
     (&Method::GET, Some(&"/")) => {
       // 处理GET请求
@@ -90,7 +85,6 @@ async fn handle_request(
       // 处理POST请求
       let full_body = hyper::body::to_bytes(req.into_body()).await?;
       let decoded_body = String::from_utf8_lossy(&full_body).to_string();
-      info!("Mint from {client_ip}");
 
       let form_data: MintData = match serde_json::from_str(&decoded_body) {
         Ok(data) => data,
@@ -98,13 +92,20 @@ async fn handle_request(
           return Ok(Response::new(Body::from("Invalid form data")));
         }
       };
+      let source = form_data.params.source;
+      let destination = form_data
+        .params
+        .destination
+        .clone()
+        .unwrap_or(source.clone());
+      info!("Mint from {source} to {destination}");
 
       match form_data.method.as_str() {
         "mint" => {
           let mint = Mint {
             fee_rate: FeeRate::from(form_data.params.fee_rate),
             destination: form_data.params.destination,
-            source: form_data.params.source,
+            source,
             extension: form_data.params.extension,
             content: form_data.params.content,
             repeat: form_data.params.repeat,
@@ -125,7 +126,6 @@ async fn handle_request(
       // 处理POST请求
       let full_body = hyper::body::to_bytes(req.into_body()).await?;
       let decoded_body = String::from_utf8_lossy(&full_body).to_string();
-      info!("Transfer from {client_ip}");
 
       let form_data: TransferData = match serde_json::from_str(&decoded_body) {
         Ok(data) => data,
@@ -133,13 +133,16 @@ async fn handle_request(
           return Ok(Response::new(Body::from("Invalid form data")));
         }
       };
+      let source = form_data.params.source;
+      let destination = form_data.params.destination;
+      info!("Transfer from {source} to {destination}");
 
       match form_data.method.as_str() {
         "transfer" => {
           let transfer = Transfer {
             fee_rate: FeeRate::from(form_data.params.fee_rate),
-            destination: form_data.params.destination,
-            source: form_data.params.source,
+            destination,
+            source,
             outgoing: Outgoing::from_str(&form_data.params.outgoing)?,
           };
           let output = transfer.build(options)?;

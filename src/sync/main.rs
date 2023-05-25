@@ -1,11 +1,11 @@
-use std::thread;
-use std::time::Duration;
 use clap::{Arg, Command};
 use env_logger;
 use log::{error, info};
 use ord::chain::Chain;
 use ord::index::Index;
 use ord::options::Options;
+use std::thread;
+use std::time::Duration;
 
 fn main() {
   std::env::set_var("RUST_LOG", "ord_index=info");
