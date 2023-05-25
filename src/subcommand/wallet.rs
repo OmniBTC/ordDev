@@ -20,7 +20,6 @@ pub mod create;
 pub(crate) mod inscribe;
 pub mod inscriptions;
 pub mod mint;
-pub mod transfer;
 pub mod outputs;
 pub mod receive;
 mod restore;
@@ -28,6 +27,7 @@ pub mod sats;
 pub mod send;
 pub(crate) mod transaction_builder;
 pub mod transactions;
+pub mod transfer;
 
 #[derive(Debug, Parser)]
 pub(crate) enum Wallet {

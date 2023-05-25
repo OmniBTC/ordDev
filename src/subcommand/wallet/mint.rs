@@ -65,24 +65,29 @@ impl Mint {
 
     let reveal_tx_destination = self.destination.unwrap_or_else(|| source.clone());
 
-    let (unsigned_commit_tx, reveal_txs, _recovery_key_pair, service_fee, satpoint_fee, network_fee) =
-      Mint::create_inscription_transactions(
-        None,
-        inscription,
-        inscriptions,
-        options.chain().network(),
-        utxos.clone(),
-        commit_tx_change,
-        reveal_tx_destination,
-        self.fee_rate,
-        self.fee_rate,
-        false,
-        service_address,
-        repeat as usize,
-      )?;
+    let (
+      unsigned_commit_tx,
+      reveal_txs,
+      _recovery_key_pair,
+      service_fee,
+      satpoint_fee,
+      network_fee,
+    ) = Mint::create_inscription_transactions(
+      None,
+      inscription,
+      inscriptions,
+      options.chain().network(),
+      utxos.clone(),
+      commit_tx_change,
+      reveal_tx_destination,
+      self.fee_rate,
+      self.fee_rate,
+      false,
+      service_address,
+      repeat as usize,
+    )?;
 
-    let network_fee =
-      Self::calculate_fee(&unsigned_commit_tx, &utxos) + network_fee;
+    let network_fee = Self::calculate_fee(&unsigned_commit_tx, &utxos) + network_fee;
 
     let mut unsigned_commit_psbt = Psbt::from_unsigned_tx(unsigned_commit_tx.clone())?;
     for i in 0..unsigned_commit_psbt.unsigned_tx.input.len() {
@@ -97,7 +102,11 @@ impl Mint {
 
     let output = Output {
       commit: serialize_hex(&unsigned_commit_psbt),
-      reveal: reveal_txs.clone().into_iter().map(|tx| tx.raw_hex()).collect(),
+      reveal: reveal_txs
+        .clone()
+        .into_iter()
+        .map(|tx| tx.raw_hex())
+        .collect(),
       inscription: reveal_txs.into_iter().map(|tx| tx.txid().into()).collect(),
       service_fee,
       satpoint_fee,
@@ -253,7 +262,6 @@ impl Mint {
     reveal_fees.reverse();
     next_remain_fees.reverse();
 
-
     let unsigned_commit_tx = TransactionBuilder::build_transaction_with_value(
       satpoint,
       inscriptions,
@@ -330,14 +338,10 @@ impl Mint {
         (reveal_txs[i - 1].txid(), 1)
       };
 
-
       let (mut reveal_tx, _fee) = Self::build_reveal_transaction(
         &control_block,
         reveal_fee_rate,
-        OutPoint {
-          txid,
-          vout,
-        },
+        OutPoint { txid, vout },
         reveal_output,
         &reveal_script,
       );
@@ -351,7 +355,7 @@ impl Mint {
       let prevout = if i == 0 {
         output
       } else {
-        & reveal_txs[i - 1].output[1]
+        &reveal_txs[i - 1].output[1]
       };
 
       let signature_hash = sighash_cache
@@ -398,8 +402,14 @@ impl Mint {
       commit_tx_address
     );
 
-
-    Ok((unsigned_commit_tx, reveal_txs, recovery_key_pair, service_fee, satpoint_fee, network_fee))
+    Ok((
+      unsigned_commit_tx,
+      reveal_txs,
+      recovery_key_pair,
+      service_fee,
+      satpoint_fee,
+      network_fee,
+    ))
   }
 
   fn build_reveal_transaction(

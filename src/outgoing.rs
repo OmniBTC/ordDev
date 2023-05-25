@@ -1,7 +1,7 @@
 use super::*;
 
 #[derive(Debug, PartialEq)]
-pub(crate) enum Outgoing {
+pub enum Outgoing {
   Amount(Amount),
   InscriptionId(InscriptionId),
   SatPoint(SatPoint),
