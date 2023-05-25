@@ -41,6 +41,12 @@ fn main() {
         .long("rpc-url")
         .takes_value(true)
         .help("Connect to Bitcoin Core RPC at <RPC_URL>."),
+    )
+    .arg(
+      Arg::new("wait-start")
+        .long("wait-start")
+        .takes_value(true)
+        .help("Wait to start up."),
     );
 
   let matches = args.get_matches();
@@ -65,6 +71,15 @@ fn main() {
   let bitcoin_rpc_user = matches
     .get_one::<String>("bitcoin-rpc-user")
     .map(|s| s.clone());
+
+  let wait_start = matches
+    .get_one::<u64>("wait-start")
+    .map(|s| *s);
+
+  if let Some(w) = wait_start{
+    info!("Wait {w}s to start...");
+    thread::sleep(Duration::from_secs(w));
+  }
 
   let rpc_url = matches.get_one::<String>("rpc-url").map(|s| s.clone());
 
