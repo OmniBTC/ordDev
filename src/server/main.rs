@@ -1,9 +1,11 @@
 use anyhow::Error;
 use bitcoin::Address;
 use clap::{Arg, Command};
+use env_logger;
 use hyper::server::Server;
 use hyper::service::{make_service_fn, service_fn};
 use hyper::{Body, Method, Request, Response, StatusCode};
+use log::{error, info};
 use ord::chain::Chain;
 use ord::options::Options;
 use ord::outgoing::Outgoing;
@@ -73,6 +75,11 @@ async fn handle_request(
     testnet: false,
     wallet: "".to_string(),
   };
+  let client_ip = req
+    .headers()
+    .get("x-forwarded-for")
+    .map(|v| format!("{:?}", v.clone()))
+    .unwrap_or_else(|| String::from("Unknown"));
   match (req.method(), path.get(0)) {
     (&Method::GET, Some(&"/")) => {
       // 处理GET请求
@@ -83,7 +90,7 @@ async fn handle_request(
       // 处理POST请求
       let full_body = hyper::body::to_bytes(req.into_body()).await?;
       let decoded_body = String::from_utf8_lossy(&full_body).to_string();
-      println!("{}", decoded_body.clone());
+      info!("Mint from {client_ip}");
 
       let form_data: MintData = match serde_json::from_str(&decoded_body) {
         Ok(data) => data,
@@ -118,7 +125,7 @@ async fn handle_request(
       // 处理POST请求
       let full_body = hyper::body::to_bytes(req.into_body()).await?;
       let decoded_body = String::from_utf8_lossy(&full_body).to_string();
-      println!("{}", decoded_body.clone());
+      info!("Transfer from {client_ip}");
 
       let form_data: TransferData = match serde_json::from_str(&decoded_body) {
         Ok(data) => data,
@@ -160,6 +167,8 @@ async fn handle_request(
 
 #[tokio::main]
 async fn main() {
+  std::env::set_var("RUST_LOG", "ord_server=info");
+  env_logger::init();
   let args = Command::new("Brc20 Server")
     .arg(
       Arg::new("chain")
@@ -194,7 +203,7 @@ async fn main() {
   };
 
   let addr = SocketAddr::from(([127, 0, 0, 1], 3080));
-  println!(
+  info!(
     "Server running at http://{}, network:{:?}, service:{:?}",
     addr,
     chain_argument,
@@ -213,6 +222,6 @@ async fn main() {
   let server = Server::bind(&addr).serve(make_svc);
 
   if let Err(e) = server.await {
-    eprintln!("Server error: {}", e);
+    error!("Server error: {}", e);
   }
 }
