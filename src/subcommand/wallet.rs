@@ -28,7 +28,6 @@ pub mod send;
 pub(crate) mod transaction_builder;
 pub mod transactions;
 pub mod transfer;
-pub mod transfer_brc20;
 
 #[derive(Debug, Parser)]
 pub(crate) enum Wallet {
@@ -38,8 +37,6 @@ pub(crate) enum Wallet {
   Create(create::Create),
   #[clap(about = "Create inscription")]
   Inscribe(inscribe::Inscribe),
-  #[clap(about = "Transfer brc20")]
-  TransferBrc20(transfer_brc20::TransferBrc20),
   #[clap(about = "Transfer inscription|amount|satpoint")]
   Transfer(transfer::Transfer),
   #[clap(about = "Mint inscription")]
@@ -68,7 +65,6 @@ impl Wallet {
       Self::Balance => balance::run(options),
       Self::Create(create) => create.run(options),
       Self::Inscribe(inscribe) => inscribe.run(options),
-      Self::TransferBrc20(transfer_brc20) => transfer_brc20.run(options),
       Self::Transfer(transfer) => transfer.run(options),
       Self::Mint(mint) => mint.run(options),
       Self::Inscriptions => inscriptions::run(options),
