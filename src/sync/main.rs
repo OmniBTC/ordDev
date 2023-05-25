@@ -48,15 +48,17 @@ fn main() {
     testnet: false,
     wallet: "".to_string(),
   };
-  let index = Index::open(&options).unwrap();
   let mut count = 0;
   loop {
+    if count > 0 {
+      thread::sleep(Duration::from_secs(180));
+    }
+    let index = Index::open(&options).unwrap();
     if let Err(e) = index.update() {
       error!("Index error:{e}")
-    } else if count % 30 == 0{
+    } else {
       info!("Index success")
     }
-    thread::sleep(Duration::from_secs(1));
     count += 1;
   }
 }
