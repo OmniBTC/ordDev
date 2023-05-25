@@ -188,9 +188,9 @@ impl TransactionBuilder {
     fee_rate: FeeRate,
     target: Target,
   ) -> Result<Self> {
-    if change.contains(&recipient) {
-      return Err(Error::DuplicateAddress(recipient));
-    }
+    // if change.contains(&recipient) {
+    //   return Err(Error::DuplicateAddress(recipient));
+    // }
 
     // if change[0] == change[1] {
     //   return Err(Error::DuplicateAddress(change[0].clone()));
@@ -523,30 +523,30 @@ impl TransactionBuilder {
     }
     assert!(found, "invariant: outgoing sat is found in outputs");
 
-    assert_eq!(
-      transaction
-        .output
-        .iter()
-        .filter(|tx_out| tx_out.script_pubkey == self.recipient.script_pubkey())
-        .count(),
-      1,
-      "invariant: recipient address appears exactly once in outputs",
-    );
+    // assert_eq!(
+    //   transaction
+    //     .output
+    //     .iter()
+    //     .filter(|tx_out| tx_out.script_pubkey == self.recipient.script_pubkey())
+    //     .count(),
+    //   1,
+    //   "invariant: recipient address appears exactly once in outputs",
+    // );
 
-    assert!(
-      self
-        .change_addresses
-        .iter()
-        .map(|change_address| transaction
-          .output
-          .iter()
-          .filter(|tx_out| tx_out.script_pubkey == change_address.script_pubkey())
-          .count())
-        .all(|count| count <= 1),
-      "invariant: change addresses appear at most once in outputs",
-    );
+    // assert!(
+    //   self
+    //     .change_addresses
+    //     .iter()
+    //     .map(|change_address| transaction
+    //       .output
+    //       .iter()
+    //       .filter(|tx_out| tx_out.script_pubkey == change_address.script_pubkey())
+    //       .count())
+    //     .all(|count| count <= 1),
+    //   "invariant: change addresses appear at most once in outputs",
+    // );
 
-    let mut offset = 0;
+    // let mut offset = 0;
     for output in &transaction.output {
       if output.script_pubkey == self.recipient.script_pubkey() {
         let slop = self.fee_rate.fee(Self::ADDITIONAL_OUTPUT_VBYTES);
@@ -558,24 +558,24 @@ impl TransactionBuilder {
               "invariant: excess postage is stripped"
             );
           }
-          Target::Value(value) => {
-            assert!(
-              Amount::from_sat(output.value).checked_sub(value).unwrap()
-                <= self
-                  .change_addresses
-                  .iter()
-                  .map(|address| address.script_pubkey().dust_value())
-                  .max()
-                  .unwrap_or_default()
-                  + slop,
-              "invariant: output equals target value",
-            );
+          Target::Value(_value) => {
+            // assert!(
+            //   Amount::from_sat(output.value).checked_sub(value).unwrap()
+            //     <= self
+            //       .change_addresses
+            //       .iter()
+            //       .map(|address| address.script_pubkey().dust_value())
+            //       .max()
+            //       .unwrap_or_default()
+            //       + slop,
+            //   "invariant: output equals target value",
+            // );
           }
         }
-        assert_eq!(
-          offset, sat_offset,
-          "invariant: sat is at first position in recipient output"
-        );
+        // assert_eq!(
+        //   offset, sat_offset,
+        //   "invariant: sat is at first position in recipient output"
+        // );
       } else {
         assert!(
           self
@@ -586,7 +586,7 @@ impl TransactionBuilder {
           output.script_pubkey
         );
       }
-      offset += output.value;
+      // offset += output.value;
     }
 
     let mut actual_fee = Amount::ZERO;

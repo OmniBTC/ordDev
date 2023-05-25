@@ -89,17 +89,7 @@ impl Mint {
 
     let network_fee = Self::calculate_fee(&unsigned_commit_tx, &utxos) + network_fee;
 
-    let mut unsigned_commit_psbt = Psbt::from_unsigned_tx(unsigned_commit_tx.clone())?;
-    for i in 0..unsigned_commit_psbt.unsigned_tx.input.len() {
-      unsigned_commit_psbt.inputs[i].witness_utxo = Some(TxOut {
-        value: utxos
-          .get(&unsigned_commit_psbt.unsigned_tx.input[i].previous_output)
-          .ok_or_else(|| anyhow!("wallet contains no cardinal utxos"))?
-          .to_sat(),
-        script_pubkey: source.script_pubkey(),
-      });
-    }
-
+    let unsigned_commit_psbt = Self::get_psbt(&unsigned_commit_tx, &utxos, &source)?;
     let output = Output {
       commit: serialize_hex(&unsigned_commit_psbt),
       reveal: reveal_txs
@@ -118,6 +108,24 @@ impl Mint {
   pub fn run(self, options: Options) -> Result {
     print_json(self.build(options, None)?)?;
     Ok(())
+  }
+
+  fn get_psbt(
+    tx: &Transaction,
+    utxos: &BTreeMap<OutPoint, Amount>,
+    source: &Address,
+  ) -> Result<Psbt> {
+    let mut tx_psbt = Psbt::from_unsigned_tx(tx.clone())?;
+    for i in 0..tx_psbt.unsigned_tx.input.len() {
+      tx_psbt.inputs[i].witness_utxo = Some(TxOut {
+        value: utxos
+          .get(&tx_psbt.unsigned_tx.input[i].previous_output)
+          .ok_or_else(|| anyhow!("wallet contains no cardinal utxos"))?
+          .to_sat(),
+        script_pubkey: source.script_pubkey(),
+      });
+    }
+    Ok(tx_psbt)
   }
 
   fn calculate_fee(tx: &Transaction, utxos: &BTreeMap<OutPoint, Amount>) -> u64 {

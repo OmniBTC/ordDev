@@ -1,5 +1,6 @@
 use super::*;
-use bitcoincore_rpc::RawTx;
+use bitcoin::consensus::encode::serialize_hex;
+use bitcoin::psbt::Psbt;
 use std::collections::BTreeSet;
 
 #[derive(Debug, Parser)]
@@ -48,18 +49,21 @@ impl Transfer {
 
     let change = [self.source.clone(), self.source.clone()];
 
-    let satpoint = match self.outgoing {
+    let (satpoint, amount) = match self.outgoing {
       Outgoing::SatPoint(satpoint) => {
         for inscription_satpoint in inscriptions.keys() {
           if satpoint == *inscription_satpoint {
             bail!("inscriptions must be sent by inscription ID");
           }
         }
-        satpoint
+        (satpoint, TransactionBuilder::TARGET_POSTAGE)
       }
-      Outgoing::InscriptionId(id) => index
-        .get_inscription_satpoint_by_id(id)?
-        .ok_or_else(|| anyhow!("Inscription {id} not found"))?,
+      Outgoing::InscriptionId(id) => (
+        index
+          .get_inscription_satpoint_by_id(id)?
+          .ok_or_else(|| anyhow!("Inscription {id} not found"))?,
+        TransactionBuilder::TARGET_POSTAGE,
+      ),
       Outgoing::Amount(amount) => {
         let inscribed_utxos = inscriptions
           .keys()
@@ -74,38 +78,27 @@ impl Transfer {
             offset: 0,
           })
           .ok_or_else(|| anyhow!("wallet contains no cardinal utxos"))?;
-
-        let unsigned_transaction = TransactionBuilder::build_transaction_with_value(
-          satpoint,
-          inscriptions,
-          unspent_outputs.clone(),
-          self.destination,
-          change,
-          self.fee_rate,
-          amount,
-        )?;
-
-        let network_fee = Self::calculate_fee(&unsigned_transaction, &unspent_outputs);
-
-        return Ok(Output {
-          transaction: unsigned_transaction.raw_hex(),
-          network_fee,
-        });
+        (satpoint, amount)
       }
     };
 
-    let unsigned_transaction = TransactionBuilder::build_transaction_with_postage(
+    let unsigned_transaction = TransactionBuilder::build_transaction_with_value(
       satpoint,
       inscriptions,
       unspent_outputs.clone(),
       self.destination,
       change,
       self.fee_rate,
+      amount,
     )?;
+
     let network_fee = Self::calculate_fee(&unsigned_transaction, &unspent_outputs);
 
+    let unsigned_transaction_psbt =
+      Self::get_psbt(&unsigned_transaction, &unspent_outputs, &self.source)?;
+
     return Ok(Output {
-      transaction: unsigned_transaction.raw_hex(),
+      transaction: serialize_hex(&unsigned_transaction_psbt),
       network_fee,
     });
   }
@@ -113,6 +106,24 @@ impl Transfer {
   pub fn run(self, options: Options) -> Result {
     print_json(self.build(options)?)?;
     Ok(())
+  }
+
+  fn get_psbt(
+    tx: &Transaction,
+    utxos: &BTreeMap<OutPoint, Amount>,
+    source: &Address,
+  ) -> Result<Psbt> {
+    let mut tx_psbt = Psbt::from_unsigned_tx(tx.clone())?;
+    for i in 0..tx_psbt.unsigned_tx.input.len() {
+      tx_psbt.inputs[i].witness_utxo = Some(TxOut {
+        value: utxos
+          .get(&tx_psbt.unsigned_tx.input[i].previous_output)
+          .ok_or_else(|| anyhow!("wallet contains no cardinal utxos"))?
+          .to_sat(),
+        script_pubkey: source.script_pubkey(),
+      });
+    }
+    Ok(tx_psbt)
   }
 
   fn calculate_fee(tx: &Transaction, utxos: &BTreeMap<OutPoint, Amount>) -> u64 {
