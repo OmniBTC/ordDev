@@ -13,6 +13,7 @@ use ord::subcommand::wallet::transfer::Transfer;
 use ord::FeeRate;
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
+use std::path::PathBuf;
 use std::str::FromStr;
 
 #[derive(Clone, PartialEq, Eq, Debug, Deserialize, Serialize)]
@@ -50,30 +51,11 @@ struct TransferData {
 }
 
 async fn handle_request(
-  chain_argument: Chain,
+  options: Options,
   service_address: Address,
   req: Request<Body>,
 ) -> Result<Response<Body>, Error> {
   let path: Vec<&str> = req.uri().path().split('/').skip(1).collect();
-  let options = Options {
-    bitcoin_data_dir: None,
-    bitcoin_rpc_pass: None,
-    bitcoin_rpc_user: None,
-    chain_argument,
-    config: None,
-    config_dir: None,
-    cookie_file: None,
-    data_dir: None,
-    first_inscription_height: None,
-    height_limit: None,
-    index: None,
-    index_sats: false,
-    regtest: false,
-    rpc_url: None,
-    signet: false,
-    testnet: false,
-    wallet: "".to_string(),
-  };
   match (req.method(), path.first()) {
     (&Method::GET, Some(&"/")) => {
       // 处理GET请求
@@ -184,6 +166,30 @@ async fn main() {
         .long("service_address")
         .takes_value(true)
         .help("Sets the service address"),
+    )
+    .arg(
+      Arg::new("bitcoin-data-dir")
+        .long("bitcoin-data-dir")
+        .takes_value(true)
+        .help("Load Bitcoin Core data dir from <BITCOIN_DATA_DIR>."),
+    )
+    .arg(
+      Arg::new("bitcoin-rpc-pass")
+        .long("bitcoin-rpc-pass")
+        .takes_value(true)
+        .help("Authenticate to Bitcoin Core RPC with <RPC_PASS>."),
+    )
+    .arg(
+      Arg::new("bitcoin-rpc-user")
+        .long("bitcoin-rpc-user")
+        .takes_value(true)
+        .help("Authenticate to Bitcoin Core RPC as <RPC_USER>."),
+    )
+    .arg(
+      Arg::new("rpc-url")
+        .long("rpc-url")
+        .takes_value(true)
+        .help("Connect to Bitcoin Core RPC at <RPC_URL>."),
     );
 
   let matches = args.get_matches();
@@ -204,6 +210,40 @@ async fn main() {
     _ => Chain::Testnet,
   };
 
+  let bitcoin_data_dir: Option<PathBuf> = matches
+    .get_one::<String>("bitcoin-data-dir")
+    .map(|s| s.into());
+
+  let bitcoin_rpc_pass = matches
+    .get_one::<String>("bitcoin-rpc-pass")
+    .map(|s| s.clone());
+
+  let bitcoin_rpc_user = matches
+    .get_one::<String>("bitcoin-rpc-user")
+    .map(|s| s.clone());
+
+  let rpc_url = matches.get_one::<String>("rpc-url").map(|s| s.clone());
+
+  let options = Options {
+    bitcoin_data_dir,
+    bitcoin_rpc_pass,
+    bitcoin_rpc_user,
+    chain_argument,
+    config: None,
+    config_dir: None,
+    cookie_file: None,
+    data_dir: None,
+    first_inscription_height: None,
+    height_limit: None,
+    index: None,
+    index_sats: false,
+    regtest: false,
+    rpc_url,
+    signet: false,
+    testnet: false,
+    wallet: "ord".to_string(),
+  };
+
   let addr = SocketAddr::from(([127, 0, 0, 1], 3080));
   info!(
     "Server running at http://{}, network:{:?}, service:{:?}",
@@ -212,10 +252,11 @@ async fn main() {
     service_address.clone()
   );
   let make_svc = make_service_fn(move |_conn| {
+    let options = options.clone();
     let service_address = service_address.clone();
     async move {
       Ok::<_, Error>(service_fn(move |req| {
-        handle_request(chain_argument, service_address.clone(), req)
+        handle_request(options.clone(), service_address.clone(), req)
       }))
     }
   });
