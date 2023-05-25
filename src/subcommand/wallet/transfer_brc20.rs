@@ -19,9 +19,10 @@ use {
 
 #[derive(Debug, Serialize)]
 pub struct Output {
-  pub inscription: Vec<InscriptionId>,
+  pub inscription: InscriptionId,
   pub commit: String,
-  pub reveal: Vec<String>,
+  pub reveal: String,
+  pub transfer: String,
   pub service_fee: u64,
   pub satpoint_fee: u64,
   pub network_fee: u64,
@@ -32,23 +33,19 @@ pub struct TransferBrc20 {
   #[clap(long, help = "Use fee rate of <FEE_RATE> sats/vB")]
   pub fee_rate: FeeRate,
   #[clap(long, help = "Send inscription to <DESTINATION>.")]
-  pub destination: Option<Address>,
+  pub destination: Address,
   #[clap(long, help = "Send inscription from <SOURCE>.")]
   pub source: Address,
-  #[clap(long, help = "Content type of mint, '.txt'.")]
-  pub extension: Option<String>,
   #[clap(long, help = "Content of mint.")]
   pub content: String,
-  #[clap(long, help = "Repeat count of mint.")]
-  pub repeat: Option<u64>,
 }
 
 impl TransferBrc20 {
   pub const SERVICE_FEE: Amount = Amount::from_sat(3000);
 
   pub fn build(self, options: Options, service_address: Option<Address>) -> Result<Output> {
-    let repeat: u64 = self.repeat.unwrap_or(1);
-    let extension = "data.".to_owned() + &self.extension.unwrap_or(".txt".to_owned());
+    let repeat: u64 = 1;
+    let extension = "data.txt";
 
     let inscription = Inscription::from_content(options.chain(), &extension, self.content)?;
 
@@ -58,13 +55,11 @@ impl TransferBrc20 {
     let source = self.source;
     let service_address = service_address.unwrap_or(source.clone());
     let utxos = index.get_unspent_outputs_by_mempool(&format!("{}", source))?;
-
     let inscriptions = index.get_inscriptions(None)?;
 
+    // Inscribe transfer
     let commit_tx_change = [source.clone(), source.clone()];
-
-    let reveal_tx_destination = self.destination.unwrap_or_else(|| source.clone());
-
+    let reveal_tx_destination = source.clone();
     let (
       unsigned_commit_tx,
       reveal_txs,
@@ -75,7 +70,7 @@ impl TransferBrc20 {
     ) = TransferBrc20::create_inscription_transactions(
       None,
       inscription,
-      inscriptions,
+      inscriptions.clone(),
       options.chain().network(),
       utxos.clone(),
       commit_tx_change,
@@ -86,18 +81,39 @@ impl TransferBrc20 {
       service_address,
       repeat as usize,
     )?;
-
-    let network_fee = Self::calculate_fee(&unsigned_commit_tx, &utxos) + network_fee;
-
     let unsigned_commit_psbt = Self::get_psbt(&unsigned_commit_tx, &utxos, &source)?;
+
+    // Send transfer
+    let send_tx_change = [source.clone(), source.clone()];
+    let send_satpoint = SatPoint {
+      outpoint: OutPoint {
+        txid: reveal_txs[0].txid(),
+        vout: 0,
+      },
+      offset: 0,
+    };
+    let unsigned_send_transaction = TransactionBuilder::build_transaction_with_value(
+      send_satpoint,
+      inscriptions,
+      utxos.clone(),
+      self.destination,
+      send_tx_change,
+      self.fee_rate,
+      TransactionBuilder::TARGET_POSTAGE,
+    )?;
+
+    let network_fee = Self::calculate_fee(&unsigned_commit_tx, &utxos)
+      + network_fee
+      + Self::calculate_fee(&unsigned_send_transaction, &utxos);
+
+    let unsigned_send_transaction_psbt =
+      Self::get_psbt(&unsigned_send_transaction, &utxos, &source)?;
+
     let output = Output {
       commit: serialize_hex(&unsigned_commit_psbt),
-      reveal: reveal_txs
-        .clone()
-        .into_iter()
-        .map(|tx| tx.raw_hex())
-        .collect(),
-      inscription: reveal_txs.into_iter().map(|tx| tx.txid().into()).collect(),
+      reveal: reveal_txs[0].raw_hex(),
+      inscription: reveal_txs[0].txid().into(),
+      transfer: serialize_hex(&unsigned_send_transaction_psbt),
       service_fee,
       satpoint_fee,
       network_fee,
