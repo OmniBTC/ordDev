@@ -54,6 +54,25 @@ async fn handle_request(
   req: Request<Body>,
 ) -> Result<Response<Body>, Error> {
   let path: Vec<&str> = req.uri().path().split('/').skip(1).collect();
+  let options = Options {
+    bitcoin_data_dir: None,
+    bitcoin_rpc_pass: None,
+    bitcoin_rpc_user: None,
+    chain_argument,
+    config: None,
+    config_dir: None,
+    cookie_file: None,
+    data_dir: None,
+    first_inscription_height: None,
+    height_limit: None,
+    index: None,
+    index_sats: false,
+    regtest: false,
+    rpc_url: None,
+    signet: false,
+    testnet: false,
+    wallet: "".to_string(),
+  };
   match (req.method(), path.get(0)) {
     (&Method::GET, Some(&"/")) => {
       // 处理GET请求
@@ -83,28 +102,7 @@ async fn handle_request(
             content: form_data.params.content,
             repeat: form_data.params.repeat,
           };
-          let output = mint.build(
-            Options {
-              bitcoin_data_dir: None,
-              bitcoin_rpc_pass: None,
-              bitcoin_rpc_user: None,
-              chain_argument,
-              config: None,
-              config_dir: None,
-              cookie_file: None,
-              data_dir: None,
-              first_inscription_height: None,
-              height_limit: None,
-              index: None,
-              index_sats: false,
-              regtest: false,
-              rpc_url: None,
-              signet: false,
-              testnet: false,
-              wallet: "".to_string(),
-            },
-            Some(service_address),
-          )?;
+          let output = mint.build(options, Some(service_address))?;
           Ok(Response::new(Body::from(serde_json::to_string(&output)?)))
         }
         _ => {
@@ -137,25 +135,7 @@ async fn handle_request(
             source: form_data.params.source,
             outgoing: Outgoing::from_str(&form_data.params.outgoing)?,
           };
-          let output = transfer.build(Options {
-            bitcoin_data_dir: None,
-            bitcoin_rpc_pass: None,
-            bitcoin_rpc_user: None,
-            chain_argument,
-            config: None,
-            config_dir: None,
-            cookie_file: None,
-            data_dir: None,
-            first_inscription_height: None,
-            height_limit: None,
-            index: None,
-            index_sats: false,
-            regtest: false,
-            rpc_url: None,
-            signet: false,
-            testnet: false,
-            wallet: "".to_string(),
-          })?;
+          let output = transfer.build(options)?;
           Ok(Response::new(Body::from(serde_json::to_string(&output)?)))
         }
         _ => {

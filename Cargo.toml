@@ -72,6 +72,10 @@ path = "src/bin/main.rs"
 name = "ord_server"
 path = "src/server/main.rs"
 
+[[bin]]
+name = "ord_index"
+path = "src/sync/main.rs"
+
 [lib]
 name = "ord"
 path = "src/lib.rs"

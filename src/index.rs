@@ -44,7 +44,7 @@ define_table! { SAT_TO_SATPOINT, u64, &SatPointValue }
 define_table! { STATISTIC_TO_COUNT, u64, u64 }
 define_table! { WRITE_TRANSACTION_STARTING_BLOCK_COUNT_TO_TIMESTAMP, u64, u128 }
 
-pub(crate) struct Index {
+pub struct Index {
   client: Client,
   database: Database,
   path: PathBuf,
@@ -149,7 +149,7 @@ pub struct ListUnspentResultEntry {
 }
 
 impl Index {
-  pub(crate) fn open(options: &Options) -> Result<Self> {
+  pub fn open(options: &Options) -> Result<Self> {
     let client = options.bitcoin_rpc_client()?;
 
     let data_dir = options.data_dir()?;
@@ -407,7 +407,7 @@ impl Index {
     Ok(info)
   }
 
-  pub(crate) fn update(&self) -> Result {
+  pub fn update(&self) -> Result {
     Updater::update(self)
   }
 
