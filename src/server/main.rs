@@ -190,7 +190,15 @@ async fn main() {
         .long("rpc-url")
         .takes_value(true)
         .help("Connect to Bitcoin Core RPC at <RPC_URL>."),
-    );
+    )
+    .arg(
+      Arg::new("ip")
+        .long("ip")
+        .takes_value(true)
+        .default_value("0.0.0.0")
+        .help("Connect to Bitcoin Core RPC at <RPC_URL>."),
+    )
+    ;
 
   let matches = args.get_matches();
   let chain = matches
@@ -224,6 +232,8 @@ async fn main() {
 
   let rpc_url = matches.get_one::<String>("rpc-url").map(|s| s.clone());
 
+  let ip = matches.get_one::<String>("ip").map(|s| s.clone()).unwrap();
+
   let options = Options {
     bitcoin_data_dir,
     bitcoin_rpc_pass,
@@ -244,7 +254,7 @@ async fn main() {
     wallet: "ord".to_string(),
   };
 
-  let addr = SocketAddr::from(([127, 0, 0, 1], 3080));
+  let addr = SocketAddr::new(ip.as_str().parse().unwrap(),3080);
   info!(
     "Server running at http://{}, network:{:?}, service:{:?}",
     addr,
