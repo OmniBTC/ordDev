@@ -50,7 +50,7 @@ struct TransferData {
   params: TransferParam,
 }
 
-async fn handle_request(
+async fn _handle_request(
   options: Options,
   service_address: Address,
   req: Request<Body>,
@@ -145,6 +145,25 @@ async fn handle_request(
         .body(Body::empty())
         .unwrap();
       Ok(response)
+    }
+  }
+}
+
+async fn handle_request(
+  options: Options,
+  service_address: Address,
+  req: Request<Body>,
+) -> Result<Response<Body>, Error> {
+  match _handle_request(options, service_address, req).await {
+    Ok(v) => Ok(v),
+    Err(e) => {
+      error!("Req fail:{e}");
+      Ok(
+        Response::builder()
+          .status(StatusCode::BAD_REQUEST)
+          .body(Body::from(format!("{}", e)))
+          .unwrap(),
+      )
     }
   }
 }
