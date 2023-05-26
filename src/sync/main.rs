@@ -38,6 +38,12 @@ fn main() {
         .help("Authenticate to Bitcoin Core RPC as <RPC_USER>."),
     )
     .arg(
+      Arg::new("data-dir")
+        .long("data-dir")
+        .takes_value(true)
+        .help("Store index in <DATA_DIR>."),
+    )
+    .arg(
       Arg::new("rpc-url")
         .long("rpc-url")
         .takes_value(true)
@@ -73,6 +79,8 @@ fn main() {
     .get_one::<String>("bitcoin-rpc-user")
     .map(|s| s.clone());
 
+  let data_dir: Option<PathBuf> = matches.get_one::<String>("data-dir").map(|s| s.into());
+
   let wait_start = matches
     .get_one::<String>("wait-start")
     .map(|s| s.parse().unwrap_or(0));
@@ -92,7 +100,7 @@ fn main() {
     config: None,
     config_dir: None,
     cookie_file: None,
-    data_dir: None,
+    data_dir,
     first_inscription_height: None,
     height_limit: None,
     index: None,

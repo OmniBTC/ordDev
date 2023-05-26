@@ -186,6 +186,12 @@ async fn main() {
         .help("Authenticate to Bitcoin Core RPC as <RPC_USER>."),
     )
     .arg(
+      Arg::new("data-dir")
+        .long("data-dir")
+        .takes_value(true)
+        .help("Store index in <DATA_DIR>."),
+    )
+    .arg(
       Arg::new("rpc-url")
         .long("rpc-url")
         .takes_value(true)
@@ -197,8 +203,7 @@ async fn main() {
         .takes_value(true)
         .default_value("0.0.0.0")
         .help("Connect to Bitcoin Core RPC at <RPC_URL>."),
-    )
-    ;
+    );
 
   let matches = args.get_matches();
   let chain = matches
@@ -230,6 +235,8 @@ async fn main() {
     .get_one::<String>("bitcoin-rpc-user")
     .map(|s| s.clone());
 
+  let data_dir: Option<PathBuf> = matches.get_one::<String>("data-dir").map(|s| s.into());
+
   let rpc_url = matches.get_one::<String>("rpc-url").map(|s| s.clone());
 
   let ip = matches.get_one::<String>("ip").map(|s| s.clone()).unwrap();
@@ -242,7 +249,7 @@ async fn main() {
     config: None,
     config_dir: None,
     cookie_file: None,
-    data_dir: None,
+    data_dir,
     first_inscription_height: None,
     height_limit: None,
     index: None,
@@ -254,7 +261,7 @@ async fn main() {
     wallet: "ord".to_string(),
   };
 
-  let addr = SocketAddr::new(ip.as_str().parse().unwrap(),3080);
+  let addr = SocketAddr::new(ip.as_str().parse().unwrap(), 3080);
   info!(
     "Server running at http://{}, network:{:?}, service:{:?}",
     addr,
