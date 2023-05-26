@@ -71,13 +71,9 @@ fn main() {
     .get_one::<String>("bitcoin-data-dir")
     .map(|s| s.into());
 
-  let bitcoin_rpc_pass = matches
-    .get_one::<String>("bitcoin-rpc-pass")
-    .map(|s| s.clone());
+  let bitcoin_rpc_pass = matches.get_one::<String>("bitcoin-rpc-pass").cloned();
 
-  let bitcoin_rpc_user = matches
-    .get_one::<String>("bitcoin-rpc-user")
-    .map(|s| s.clone());
+  let bitcoin_rpc_user = matches.get_one::<String>("bitcoin-rpc-user").cloned();
 
   let data_dir: Option<PathBuf> = matches.get_one::<String>("data-dir").map(|s| s.into());
 
@@ -90,7 +86,7 @@ fn main() {
     thread::sleep(Duration::from_secs(w));
   }
 
-  let rpc_url = matches.get_one::<String>("rpc-url").map(|s| s.clone());
+  let rpc_url = matches.get_one::<String>("rpc-url").cloned();
 
   let options = Options {
     bitcoin_data_dir,

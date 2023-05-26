@@ -174,7 +174,7 @@ async fn handle_request(
     Ok(response) => response,
     Err(panic) => {
       error!("Req panic:{panic}");
-      Ok(Response::new(Body::from(format!("Index is updating"))))
+      Ok(Response::new(Body::from("Index is updating")))
     }
   }
 }
@@ -257,19 +257,15 @@ async fn main() {
     .get_one::<String>("bitcoin-data-dir")
     .map(|s| s.into());
 
-  let bitcoin_rpc_pass = matches
-    .get_one::<String>("bitcoin-rpc-pass")
-    .map(|s| s.clone());
+  let bitcoin_rpc_pass = matches.get_one::<String>("bitcoin-rpc-pass").cloned();
 
-  let bitcoin_rpc_user = matches
-    .get_one::<String>("bitcoin-rpc-user")
-    .map(|s| s.clone());
+  let bitcoin_rpc_user = matches.get_one::<String>("bitcoin-rpc-user").cloned();
 
   let data_dir: Option<PathBuf> = matches.get_one::<String>("data-dir").map(|s| s.into());
 
-  let rpc_url = matches.get_one::<String>("rpc-url").map(|s| s.clone());
+  let rpc_url = matches.get_one::<String>("rpc-url").cloned();
 
-  let ip = matches.get_one::<String>("ip").map(|s| s.clone()).unwrap();
+  let ip = matches.get_one::<String>("ip").cloned().unwrap();
 
   let options = Options {
     bitcoin_data_dir,
