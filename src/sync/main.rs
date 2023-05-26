@@ -73,7 +73,9 @@ fn main() {
     .get_one::<String>("bitcoin-rpc-user")
     .map(|s| s.clone());
 
-  let wait_start = matches.get_one::<u64>("wait-start").map(|s| *s);
+  let wait_start = matches
+    .get_one::<String>("wait-start")
+    .map(|s| s.parse().unwrap_or(0));
 
   if let Some(w) = wait_start {
     info!("Wait {w}s to start...");
