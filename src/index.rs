@@ -261,7 +261,8 @@ impl Index {
     );
     let rep = reqwest::blocking::get(url)?.text()?;
     utxos.extend(
-      serde_json::from_str::<Vec<ListUnspentResultEntry>>(&rep)?
+      serde_json::from_str::<Vec<ListUnspentResultEntry>>(&rep)
+        .map_err(|_| anyhow!(format!("Req utxo error:{}", rep)))?
         .into_iter()
         .map(|utxo| {
           let outpoint = OutPoint::new(utxo.txid, utxo.vout);

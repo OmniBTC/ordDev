@@ -63,14 +63,8 @@ impl Mint {
     let source = self.source;
     let reveal_tx_destination = self.destination.unwrap_or_else(|| source.clone());
 
-    if !source
-      .is_valid_for_network(options.chain().network())
-    {
-      bail!(
-        "Address `{}` is not valid for {}",
-        source,
-        options.chain()
-      );
+    if !source.is_valid_for_network(options.chain().network()) {
+      bail!("Address `{}` is not valid for {}", source, options.chain());
     }
     if !reveal_tx_destination.is_valid_for_network(options.chain().network()) {
       bail!(
@@ -86,7 +80,6 @@ impl Mint {
     let inscriptions = index.get_inscriptions(None)?;
 
     let commit_tx_change = [source.clone(), source.clone()];
-
 
     let (
       unsigned_commit_tx,
