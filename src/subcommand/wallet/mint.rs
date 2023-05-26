@@ -57,6 +57,7 @@ impl Mint {
 
     let inscription = Inscription::from_content(options.chain(), &extension, self.content)?;
 
+    log::info!("Open index...");
     let index = Index::open(&options)?;
     // index.update()?;
 
@@ -75,8 +76,11 @@ impl Mint {
     }
 
     let service_address = service_address.unwrap_or(source.clone());
+
+    log::info!("Get utxo...");
     let utxos = index.get_unspent_outputs_by_mempool(&format!("{}", source))?;
 
+    log::info!("Get inscriptions...");
     let inscriptions = index.get_inscriptions(None)?;
 
     let commit_tx_change = [source.clone(), source.clone()];
@@ -119,6 +123,7 @@ impl Mint {
       satpoint_fee,
       network_fee,
     };
+    log::info!("Build mint success");
     Ok(output)
   }
 

@@ -189,7 +189,7 @@ async fn handle_request(
 
 #[tokio::main]
 async fn main() {
-  std::env::set_var("RUST_LOG", "ord_server=info");
+  std::env::set_var("RUST_LOG", "info");
   env_logger::init();
   let args = Command::new("Brc20 Server")
     .arg(

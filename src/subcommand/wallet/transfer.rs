@@ -40,11 +40,14 @@ impl Transfer {
       );
     }
 
+    log::info!("Open index...");
     let index = Index::open(&options)?;
     // index.update()?;
 
+    log::info!("Get utxo...");
     let unspent_outputs = index.get_unspent_outputs_by_mempool(&format!("{}", self.source))?;
 
+    log::info!("Get inscriptions...");
     let inscriptions = index.get_inscriptions(None)?;
 
     let change = [self.source.clone(), self.source.clone()];
@@ -97,6 +100,7 @@ impl Transfer {
     let unsigned_transaction_psbt =
       Self::get_psbt(&unsigned_transaction, &unspent_outputs, &self.source)?;
 
+    log::info!("Build transfer success");
     Ok(Output {
       transaction: serialize_hex(&unsigned_transaction_psbt),
       network_fee,
