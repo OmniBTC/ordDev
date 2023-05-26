@@ -53,7 +53,7 @@ impl Mint {
     let inscription = Inscription::from_content(options.chain(), &extension, self.content)?;
 
     let index = Index::open(&options)?;
-    index.update()?;
+    // index.update()?;
 
     let source = self.source;
     let service_address = service_address.unwrap_or(source.clone());

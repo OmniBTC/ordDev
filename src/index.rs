@@ -184,8 +184,7 @@ impl Index {
               "index at `{}` appears to have been built with a newer, incompatible version of ord, consider updating ord: index schema {schema_version}, ord schema {SCHEMA_VERSION}",
               path.display()
             ),
-          cmp::Ordering::Equal => {
-          }
+          cmp::Ordering::Equal => {}
         }
 
         database
@@ -279,7 +278,11 @@ impl Index {
         filter_utxos.insert(outpoint, amount);
       }
     }
-    Ok(filter_utxos)
+    if filter_utxos.len() == 0 {
+      Err(anyhow!("Not found utxo for addr"))
+    } else {
+      Ok(filter_utxos)
+    }
   }
 
   pub(crate) fn get_unspent_outputs(&self, _wallet: Wallet) -> Result<BTreeMap<OutPoint, Amount>> {
@@ -1188,7 +1191,7 @@ mod tests {
       context.index.list(OutPoint::new(txid, 0)).unwrap().unwrap(),
       List::Unspent(vec![
         (50 * COIN_VALUE, 100 * COIN_VALUE),
-        (100 * COIN_VALUE, 150 * COIN_VALUE)
+        (100 * COIN_VALUE, 150 * COIN_VALUE),
       ]),
     );
   }
@@ -1256,7 +1259,7 @@ mod tests {
       List::Unspent(vec![
         (15000000000, 20000000000),
         (9999999990, 10000000000),
-        (14999999990, 15000000000)
+        (14999999990, 15000000000),
       ])
     );
   }
@@ -2125,7 +2128,7 @@ mod tests {
           .index
           .get_inscriptions_on_output(OutPoint {
             txid: first,
-            vout: 0
+            vout: 0,
           })
           .unwrap(),
         [inscription_id]

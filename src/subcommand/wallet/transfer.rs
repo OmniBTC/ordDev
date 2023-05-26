@@ -41,7 +41,7 @@ impl Transfer {
     }
 
     let index = Index::open(&options)?;
-    index.update()?;
+    // index.update()?;
 
     let unspent_outputs = index.get_unspent_outputs_by_mempool(&format!("{}", self.source))?;
 
