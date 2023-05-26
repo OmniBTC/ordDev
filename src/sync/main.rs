@@ -9,7 +9,7 @@ use std::thread;
 use std::time::Duration;
 
 fn main() {
-  std::env::set_var("RUST_LOG", "ord_index=info");
+  std::env::set_var("RUST_LOG", "info");
   env_logger::init();
   let args = Command::new("Brc20 Server")
     .arg(
