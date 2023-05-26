@@ -1,5 +1,5 @@
 use anyhow::Error;
-use bitcoin::Address;
+use bitcoin::{Address, Amount};
 use clap::{Arg, Command};
 use hyper::server::Server;
 use hyper::service::{make_service_fn, service_fn};
@@ -54,9 +54,15 @@ struct TransferData {
 async fn _handle_request(
   options: Options,
   service_address: Address,
+  service_fee: u64,
   req: Request<Body>,
 ) -> Result<Response<Body>, Error> {
   let path: Vec<&str> = req.uri().path().split('/').skip(1).collect();
+  let service_fee = if service_fee > 0 {
+    Some(Amount::from_sat(service_fee))
+  } else {
+    None
+  };
   match (req.method(), path.first()) {
     (&Method::GET, Some(&"/")) => {
       // 处理GET请求
@@ -92,7 +98,8 @@ async fn _handle_request(
             content: form_data.params.content,
             repeat: form_data.params.repeat,
           };
-          let output = mint.build(options, Some(service_address))?;
+
+          let output = mint.build(options, Some(service_address), service_fee)?;
           Ok(Response::new(Body::from(serde_json::to_string(&output)?)))
         }
         _ => {
@@ -153,10 +160,11 @@ async fn _handle_request(
 async fn handle_request(
   options: Options,
   service_address: Address,
+  service_fee: u64,
   req: Request<Body>,
 ) -> Result<Response<Body>, Error> {
-  let result = task::spawn(async {
-    match _handle_request(options, service_address, req).await {
+  let result = task::spawn(async move {
+    match _handle_request(options, service_address, service_fee, req).await {
       Ok(v) => Ok(v),
       Err(e) => {
         error!("Req fail:{e}");
@@ -192,10 +200,17 @@ async fn main() {
         .help("Sets the chain"),
     )
     .arg(
-      Arg::new("service_address")
-        .long("service_address")
+      Arg::new("service-address")
+        .long("service-address")
         .takes_value(true)
         .help("Sets the service address"),
+    )
+    .arg(
+      Arg::new("service-fee")
+        .long("service-fee")
+        .takes_value(true)
+        .default_value("3000")
+        .help("Sets the service fee"),
     )
     .arg(
       Arg::new("bitcoin-data-dir")
@@ -242,7 +257,7 @@ async fn main() {
     .unwrap();
   let service_address: Address = Address::from_str(
     matches
-      .get_one::<String>("service_address")
+      .get_one::<String>("service-address")
       .map(|s| s.as_str())
       .unwrap(),
   )
@@ -266,6 +281,11 @@ async fn main() {
   let rpc_url = matches.get_one::<String>("rpc-url").cloned();
 
   let ip = matches.get_one::<String>("ip").cloned().unwrap();
+
+  let service_fee: u64 = matches
+    .get_one::<String>("service-fee")
+    .map(|s| s.parse().unwrap_or(3000))
+    .unwrap();
 
   let options = Options {
     bitcoin_data_dir,
@@ -299,7 +319,7 @@ async fn main() {
     let service_address = service_address.clone();
     async move {
       Ok::<_, Error>(service_fn(move |req| {
-        handle_request(options.clone(), service_address.clone(), req)
+        handle_request(options.clone(), service_address.clone(), service_fee, req)
       }))
     }
   });

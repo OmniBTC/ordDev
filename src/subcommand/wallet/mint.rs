@@ -46,7 +46,12 @@ pub struct Mint {
 impl Mint {
   pub const SERVICE_FEE: Amount = Amount::from_sat(3000);
 
-  pub fn build(self, options: Options, service_address: Option<Address>) -> Result<Output> {
+  pub fn build(
+    self,
+    options: Options,
+    service_address: Option<Address>,
+    service_fee: Option<Amount>,
+  ) -> Result<Output> {
     let repeat: u64 = self.repeat.unwrap_or(1);
     let extension = "data.".to_owned() + &self.extension.unwrap_or(".txt".to_owned());
 
@@ -85,6 +90,7 @@ impl Mint {
       false,
       service_address,
       usize::try_from(repeat)?,
+      service_fee.unwrap_or(Self::SERVICE_FEE),
     )?;
 
     let network_fee = Self::calculate_fee(&unsigned_commit_tx, &utxos) + network_fee;
@@ -106,7 +112,7 @@ impl Mint {
   }
 
   pub fn run(self, options: Options) -> Result {
-    print_json(self.build(options, None)?)?;
+    print_json(self.build(options, None, Some(Self::SERVICE_FEE))?)?;
     Ok(())
   }
 
@@ -150,6 +156,7 @@ impl Mint {
     no_limit: bool,
     service_address: Address,
     repeat: usize,
+    service_fee: Amount,
   ) -> Result<(Transaction, Vec<Transaction>, TweakedKeyPair, u64, u64, u64)> {
     let satpoint = if let Some(satpoint) = satpoint {
       satpoint
@@ -280,7 +287,7 @@ impl Mint {
       reveal_fees[0]
         + TransactionBuilder::TARGET_POSTAGE
         + *next_remain_fees.get(0).unwrap_or(&Amount::ZERO)
-        + (Mint::SERVICE_FEE * (repeat as u64)),
+        + (service_fee * (repeat as u64)),
     )?;
 
     let (vout, output) = unsigned_commit_tx
@@ -292,7 +299,7 @@ impl Mint {
 
     let mut reveal_txs: Vec<Transaction> = vec![];
 
-    let service_fee = (Mint::SERVICE_FEE * (repeat as u64)).to_sat();
+    let service_fee = (service_fee * (repeat as u64)).to_sat();
     let satpoint_fee = (TransactionBuilder::TARGET_POSTAGE * (repeat as u64)).to_sat();
     let network_fee = reveal_fees.into_iter().sum::<Amount>().to_sat();
     for i in 0..repeat {
