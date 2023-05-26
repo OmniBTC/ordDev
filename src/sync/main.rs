@@ -4,6 +4,7 @@ use ord::chain::Chain;
 use ord::index::Index;
 use ord::options::Options;
 use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
@@ -72,11 +73,9 @@ fn main() {
     .get_one::<String>("bitcoin-rpc-user")
     .map(|s| s.clone());
 
-  let wait_start = matches
-    .get_one::<u64>("wait-start")
-    .map(|s| *s);
+  let wait_start = matches.get_one::<u64>("wait-start").map(|s| *s);
 
-  if let Some(w) = wait_start{
+  if let Some(w) = wait_start {
     info!("Wait {w}s to start...");
     thread::sleep(Duration::from_secs(w));
   }
@@ -102,17 +101,41 @@ fn main() {
     testnet: false,
     wallet: "ord".to_string(),
   };
+
+  let my_struct = Arc::new(Mutex::new(options));
+
   let mut count = 0;
   loop {
     if count > 0 {
       thread::sleep(Duration::from_secs(180));
     }
-    let index = Index::open(&options).unwrap();
-    if let Err(e) = index.update() {
-      error!("Index error:{e}")
-    } else {
-      info!("Index success")
+
+    let thread_struct = Arc::clone(&my_struct);
+    let child_thread = thread::spawn(move || {
+      info!("Index {count}th update...");
+      let my_struct = thread_struct.lock().unwrap();
+      match Index::open(&my_struct) {
+        Ok(index) => {
+          if let Err(e) = index.update() {
+            error!("Index update error:{e}")
+          } else {
+            info!("Index update success")
+          }
+        }
+        Err(e) => {
+          error!("Index open error:{e}")
+        }
+      }
+    });
+
+    if let Err(panic) = child_thread.join() {
+      if let Some(payload) = panic.downcast_ref::<&str>() {
+        error!("Index update panic: {payload}");
+      } else {
+        error!("Index update unknown panic");
+      }
     }
+
     count += 1;
   }
 }
