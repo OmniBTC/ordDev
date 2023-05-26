@@ -61,6 +61,25 @@ impl Mint {
     // index.update()?;
 
     let source = self.source;
+    let reveal_tx_destination = self.destination.unwrap_or_else(|| source.clone());
+
+    if !source
+      .is_valid_for_network(options.chain().network())
+    {
+      bail!(
+        "Address `{}` is not valid for {}",
+        source,
+        options.chain()
+      );
+    }
+    if !reveal_tx_destination.is_valid_for_network(options.chain().network()) {
+      bail!(
+        "Address `{}` is not valid for {}",
+        reveal_tx_destination,
+        options.chain()
+      );
+    }
+
     let service_address = service_address.unwrap_or(source.clone());
     let utxos = index.get_unspent_outputs_by_mempool(&format!("{}", source))?;
 
@@ -68,7 +87,6 @@ impl Mint {
 
     let commit_tx_change = [source.clone(), source.clone()];
 
-    let reveal_tx_destination = self.destination.unwrap_or_else(|| source.clone());
 
     let (
       unsigned_commit_tx,
