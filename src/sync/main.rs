@@ -113,7 +113,7 @@ fn main() {
   let mut count = 0;
   loop {
     if count > 0 {
-      thread::sleep(Duration::from_secs(180));
+      thread::sleep(Duration::from_secs(3));
     }
 
     let thread_struct = Arc::clone(&my_struct);
