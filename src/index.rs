@@ -149,6 +149,64 @@ pub struct ListUnspentResultEntry {
 }
 
 impl Index {
+  pub fn read_open(options: &Options) -> Result<Self> {
+    let client = options.bitcoin_rpc_client()?;
+
+    let data_dir = options.data_dir()?;
+
+    if let Err(err) = fs::create_dir_all(&data_dir) {
+      bail!("failed to create data dir `{}`: {err}", data_dir.display());
+    }
+
+    let path = if let Some(path) = &options.index {
+      path.clone()
+    } else {
+      data_dir.join("index.redb")
+    };
+
+    let database = match unsafe { Database::builder().open_mmapped(&path) } {
+      Ok(database) => {
+        let schema_version = database
+          .begin_read()?
+          .open_table(STATISTIC_TO_COUNT)?
+          .get(&Statistic::Schema.key())?
+          .map(|x| x.value())
+          .unwrap_or(0);
+
+        match schema_version.cmp(&SCHEMA_VERSION) {
+          cmp::Ordering::Less =>
+            bail!(
+              "index at `{}` appears to have been built with an older, incompatible version of ord, consider deleting and rebuilding the index: index schema {schema_version}, ord schema {SCHEMA_VERSION}",
+              path.display()
+            ),
+          cmp::Ordering::Greater =>
+            bail!(
+              "index at `{}` appears to have been built with a newer, incompatible version of ord, consider updating ord: index schema {schema_version}, ord schema {SCHEMA_VERSION}",
+              path.display()
+            ),
+          cmp::Ordering::Equal => {}
+        }
+        database
+      }
+      Err(error) => return Err(error.into()),
+    };
+
+    let genesis_block_coinbase_transaction =
+      options.chain().genesis_block().coinbase().unwrap().clone();
+
+    Ok(Self {
+      genesis_block_coinbase_txid: genesis_block_coinbase_transaction.txid(),
+      client,
+      database,
+      path,
+      first_inscription_height: options.first_inscription_height(),
+      genesis_block_coinbase_transaction,
+      height_limit: options.height_limit,
+      reorged: AtomicBool::new(false),
+      options: options.clone(),
+    })
+  }
+
   pub fn open(options: &Options) -> Result<Self> {
     let client = options.bitcoin_rpc_client()?;
 
@@ -279,7 +337,7 @@ impl Index {
         filter_utxos.insert(outpoint, amount);
       }
     }
-    if filter_utxos.len() == 0 {
+    if filter_utxos.is_empty() {
       Err(anyhow!("Not found utxo for addr"))
     } else {
       Ok(filter_utxos)

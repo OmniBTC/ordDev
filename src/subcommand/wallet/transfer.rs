@@ -41,7 +41,7 @@ impl Transfer {
     }
 
     log::info!("Open index...");
-    let index = Index::open(&options)?;
+    let index = Index::read_open(&options)?;
     // index.update()?;
 
     log::info!("Get utxo...");
