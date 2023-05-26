@@ -15,6 +15,7 @@ use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::str::FromStr;
+use tokio::task;
 
 #[derive(Clone, PartialEq, Eq, Debug, Deserialize, Serialize)]
 struct MintParam {
@@ -154,16 +155,26 @@ async fn handle_request(
   service_address: Address,
   req: Request<Body>,
 ) -> Result<Response<Body>, Error> {
-  match _handle_request(options, service_address, req).await {
-    Ok(v) => Ok(v),
-    Err(e) => {
-      error!("Req fail:{e}");
-      Ok(
-        Response::builder()
-          .status(StatusCode::BAD_REQUEST)
-          .body(Body::from(format!("{}", e)))
-          .unwrap(),
-      )
+  let result = task::spawn(async {
+    match _handle_request(options, service_address, req).await {
+      Ok(v) => Ok(v),
+      Err(e) => {
+        error!("Req fail:{e}");
+        Ok(
+          Response::builder()
+            .status(StatusCode::BAD_REQUEST)
+            .body(Body::from(format!("{}", e)))
+            .unwrap(),
+        )
+      }
+    }
+  })
+  .await;
+  match result {
+    Ok(response) => response,
+    Err(panic) => {
+      error!("Req panic:{panic}");
+      Ok(Response::new(Body::from(format!("Index is updating"))))
     }
   }
 }
