@@ -1,3 +1,4 @@
+use mysql_async::prelude::Queryable;
 use mysql_async::{Conn, Opts, OptsBuilder, Pool};
 use {
   self::{
@@ -53,10 +54,11 @@ pub struct MysqlDatabase {
 impl MysqlDatabase {
   fn new() -> MysqlDatabase {
     let mut opts_builder = OptsBuilder::default();
-    opts_builder.ip_or_hostname("database_host");
-    opts_builder.user(Some("username"));
-    opts_builder.pass(Some("password"));
-    opts_builder.db_name(Some("database_name"));
+    opts_builder = opts_builder
+      .ip_or_hostname("database_host")
+      .user(Some("username"))
+      .pass(Some("password"))
+      .db_name(Some("database_name"));
     let pool = Pool::new::<Opts>(opts_builder.into());
 
     MysqlDatabase {
@@ -65,8 +67,14 @@ impl MysqlDatabase {
     }
   }
 
-  async fn get_conn(&self) -> Conn {
-    self.pool.get_conn().await.unwrap()
+  async fn get_conn(&self) -> Result<Conn> {
+    Ok(
+      self
+        .pool
+        .get_conn()
+        .await
+        .map_err(|_| anyhow!("Connect fail"))?,
+    )
   }
 
   fn get_database(&self) -> String {
@@ -80,6 +88,45 @@ impl MysqlDatabase {
 
   fn get_inscription_table(&self) -> String {
     "INSCRIPTION_ID_AND_SATPOINT".to_owned()
+  }
+
+  fn encode_int_array(data: &[u8]) -> String {
+    data
+      .iter()
+      .map(|x| x.to_string())
+      .collect::<Vec<String>>()
+      .join(",")
+  }
+
+  fn decode_int_array(data: String) -> Vec<u8> {
+    data.split(",").map(|x| x.parse::<u8>().unwrap()).collect()
+  }
+
+  async fn insert_inscription(
+    &self,
+    inscription_id: &InscriptionIdValue,
+    new_satpoint: &SatPointValue,
+    new_address: &String,
+  ) {
+    let inscription_id = Self::encode_int_array(inscription_id);
+    let new_satpoint = Self::encode_int_array(new_satpoint);
+
+    let tb = self.get_inscription_table();
+    let query = format!(
+      "INSERT INTO {} (inscription_id, new_satpoint, new_address) VALUES (?, ?, ?)",
+      tb
+    );
+    let params = vec![inscription_id, new_satpoint, new_address.clone()];
+    match self.get_conn().await {
+      Ok(mut conn) => {
+        let result = conn.exec_drop(query, params).await;
+        match result {
+          Ok(_) => log::info!("Insert successful"),
+          Err(err) => log::error!("Error: {err}"),
+        }
+      }
+      Err(err) => log::error!("Error: {err}"),
+    }
   }
 }
 
