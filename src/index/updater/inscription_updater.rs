@@ -1,4 +1,5 @@
 use super::*;
+use bitcoin::Address;
 
 pub(super) struct Flotsam {
   inscription_id: InscriptionId,
@@ -26,6 +27,7 @@ pub(super) struct InscriptionUpdater<'a, 'db, 'tx> {
   satpoint_to_id: &'a mut Table<'db, 'tx, &'static SatPointValue, &'static InscriptionIdValue>,
   timestamp: u32,
   value_cache: &'a mut HashMap<OutPoint, u64>,
+  mysql_database: Option<Arc<MysqlDatabase>>,
 }
 
 impl<'a, 'db, 'tx> InscriptionUpdater<'a, 'db, 'tx> {
@@ -41,6 +43,7 @@ impl<'a, 'db, 'tx> InscriptionUpdater<'a, 'db, 'tx> {
     satpoint_to_id: &'a mut Table<'db, 'tx, &'static SatPointValue, &'static InscriptionIdValue>,
     timestamp: u32,
     value_cache: &'a mut HashMap<OutPoint, u64>,
+    mysql_database: Option<Arc<MysqlDatabase>>,
   ) -> Result<Self> {
     let next_number = number_to_id
       .iter()?
@@ -64,6 +67,7 @@ impl<'a, 'db, 'tx> InscriptionUpdater<'a, 'db, 'tx> {
       satpoint_to_id,
       timestamp,
       value_cache,
+      mysql_database,
     })
   }
 
@@ -150,10 +154,21 @@ impl<'a, 'db, 'tx> InscriptionUpdater<'a, 'db, 'tx> {
           offset: flotsam.offset - output_value,
         };
 
+        let new_address = if let Some(mysql_database) = self.mysql_database.clone() {
+          if let Ok(addr) = Address::from_script(&tx_out.script_pubkey, mysql_database.network) {
+            format!("{}", addr)
+          } else {
+            "".to_owned()
+          }
+        } else {
+          "".to_owned()
+        };
+
         self.update_inscription_location(
           input_sat_ranges,
           inscriptions.next().unwrap(),
           new_satpoint,
+          new_address,
         )?;
       }
 
@@ -174,7 +189,7 @@ impl<'a, 'db, 'tx> InscriptionUpdater<'a, 'db, 'tx> {
           outpoint: OutPoint::null(),
           offset: self.lost_sats + flotsam.offset - output_value,
         };
-        self.update_inscription_location(input_sat_ranges, flotsam, new_satpoint)?;
+        self.update_inscription_location(input_sat_ranges, flotsam, new_satpoint, "".to_owned())?;
       }
 
       Ok(self.reward - output_value)
@@ -193,6 +208,7 @@ impl<'a, 'db, 'tx> InscriptionUpdater<'a, 'db, 'tx> {
     input_sat_ranges: Option<&VecDeque<(u64, u64)>>,
     flotsam: Flotsam,
     new_satpoint: SatPoint,
+    new_address: String,
   ) -> Result {
     let inscription_id = flotsam.inscription_id.store();
 

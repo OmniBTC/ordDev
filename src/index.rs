@@ -1,3 +1,4 @@
+use mysql_async::{Conn, Opts, OptsBuilder, Pool};
 use {
   self::{
     entry::{
@@ -44,6 +45,44 @@ define_table! { SAT_TO_SATPOINT, u64, &SatPointValue }
 define_table! { STATISTIC_TO_COUNT, u64, u64 }
 define_table! { WRITE_TRANSACTION_STARTING_BLOCK_COUNT_TO_TIMESTAMP, u64, u128 }
 
+pub struct MysqlDatabase {
+  pub pool: Pool,
+  pub network: Network,
+}
+
+impl MysqlDatabase {
+  fn new() -> MysqlDatabase {
+    let mut opts_builder = OptsBuilder::default();
+    opts_builder.ip_or_hostname("database_host");
+    opts_builder.user(Some("username"));
+    opts_builder.pass(Some("password"));
+    opts_builder.db_name(Some("database_name"));
+    let pool = Pool::new::<Opts>(opts_builder.into());
+
+    MysqlDatabase {
+      pool,
+      network: Network::Bitcoin,
+    }
+  }
+
+  async fn get_conn(&self) -> Conn {
+    self.pool.get_conn().await.unwrap()
+  }
+
+  fn get_database(&self) -> String {
+    match self.network {
+      Network::Bitcoin => "ord_testnet".to_owned(),
+      Network::Testnet => "ord_mainnet".to_owned(),
+      Network::Signet => todo!(),
+      Network::Regtest => todo!(),
+    }
+  }
+
+  fn get_inscription_table(&self) -> String {
+    "INSCRIPTION_ID_AND_SATPOINT".to_owned()
+  }
+}
+
 pub struct Index {
   client: Client,
   database: Database,
@@ -54,6 +93,7 @@ pub struct Index {
   height_limit: Option<u64>,
   options: Options,
   reorged: AtomicBool,
+  mysql_database: Option<Arc<MysqlDatabase>>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -149,64 +189,6 @@ pub struct ListUnspentResultEntry {
 }
 
 impl Index {
-  pub fn read_open(options: &Options) -> Result<Self> {
-    let client = options.bitcoin_rpc_client()?;
-
-    let data_dir = options.data_dir()?;
-
-    if let Err(err) = fs::create_dir_all(&data_dir) {
-      bail!("failed to create data dir `{}`: {err}", data_dir.display());
-    }
-
-    let path = if let Some(path) = &options.index {
-      path.clone()
-    } else {
-      data_dir.join("index.redb")
-    };
-
-    let database = match unsafe { Database::builder().open_mmapped(&path) } {
-      Ok(database) => {
-        let schema_version = database
-          .begin_read()?
-          .open_table(STATISTIC_TO_COUNT)?
-          .get(&Statistic::Schema.key())?
-          .map(|x| x.value())
-          .unwrap_or(0);
-
-        match schema_version.cmp(&SCHEMA_VERSION) {
-          cmp::Ordering::Less =>
-            bail!(
-              "index at `{}` appears to have been built with an older, incompatible version of ord, consider deleting and rebuilding the index: index schema {schema_version}, ord schema {SCHEMA_VERSION}",
-              path.display()
-            ),
-          cmp::Ordering::Greater =>
-            bail!(
-              "index at `{}` appears to have been built with a newer, incompatible version of ord, consider updating ord: index schema {schema_version}, ord schema {SCHEMA_VERSION}",
-              path.display()
-            ),
-          cmp::Ordering::Equal => {}
-        }
-        database
-      }
-      Err(error) => return Err(error.into()),
-    };
-
-    let genesis_block_coinbase_transaction =
-      options.chain().genesis_block().coinbase().unwrap().clone();
-
-    Ok(Self {
-      genesis_block_coinbase_txid: genesis_block_coinbase_transaction.txid(),
-      client,
-      database,
-      path,
-      first_inscription_height: options.first_inscription_height(),
-      genesis_block_coinbase_transaction,
-      height_limit: options.height_limit,
-      reorged: AtomicBool::new(false),
-      options: options.clone(),
-    })
-  }
-
   pub fn open(options: &Options) -> Result<Self> {
     let client = options.bitcoin_rpc_client()?;
 
@@ -304,7 +286,73 @@ impl Index {
       height_limit: options.height_limit,
       reorged: AtomicBool::new(false),
       options: options.clone(),
+      mysql_database: None,
     })
+  }
+
+  pub fn read_open(options: &Options) -> Result<Self> {
+    let client = options.bitcoin_rpc_client()?;
+
+    let data_dir = options.data_dir()?;
+
+    if let Err(err) = fs::create_dir_all(&data_dir) {
+      bail!("failed to create data dir `{}`: {err}", data_dir.display());
+    }
+
+    let path = if let Some(path) = &options.index {
+      path.clone()
+    } else {
+      data_dir.join("index.redb")
+    };
+
+    let database = match unsafe { Database::builder().open_mmapped(&path) } {
+      Ok(database) => {
+        let schema_version = database
+          .begin_read()?
+          .open_table(STATISTIC_TO_COUNT)?
+          .get(&Statistic::Schema.key())?
+          .map(|x| x.value())
+          .unwrap_or(0);
+
+        match schema_version.cmp(&SCHEMA_VERSION) {
+          cmp::Ordering::Less =>
+            bail!(
+              "index at `{}` appears to have been built with an older, incompatible version of ord, consider deleting and rebuilding the index: index schema {schema_version}, ord schema {SCHEMA_VERSION}",
+              path.display()
+            ),
+          cmp::Ordering::Greater =>
+            bail!(
+              "index at `{}` appears to have been built with a newer, incompatible version of ord, consider updating ord: index schema {schema_version}, ord schema {SCHEMA_VERSION}",
+              path.display()
+            ),
+          cmp::Ordering::Equal => {}
+        }
+        database
+      }
+      Err(error) => return Err(error.into()),
+    };
+
+    let genesis_block_coinbase_transaction =
+      options.chain().genesis_block().coinbase().unwrap().clone();
+
+    Ok(Self {
+      genesis_block_coinbase_txid: genesis_block_coinbase_transaction.txid(),
+      client,
+      database,
+      path,
+      first_inscription_height: options.first_inscription_height(),
+      genesis_block_coinbase_transaction,
+      height_limit: options.height_limit,
+      reorged: AtomicBool::new(false),
+      options: options.clone(),
+      mysql_database: None,
+    })
+  }
+
+  pub fn open_with_mysql(options: &Options, mysql_database: Arc<MysqlDatabase>) -> Result<Self> {
+    let mut index = Self::open(options)?;
+    index.mysql_database = Some(mysql_database);
+    Ok(index)
   }
 
   pub(crate) fn get_unspent_outputs_by_mempool(

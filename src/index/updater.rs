@@ -437,6 +437,7 @@ impl Updater {
       &mut satpoint_to_inscription_id,
       block.header.time,
       value_cache,
+      index.mysql_database.clone(),
     )?;
 
     if self.index_sats {
