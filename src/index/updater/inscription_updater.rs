@@ -256,6 +256,9 @@ impl<'a, 'db, 'tx> InscriptionUpdater<'a, 'db, 'tx> {
 
     self.satpoint_to_id.insert(&new_satpoint, &inscription_id)?;
     self.id_to_satpoint.insert(&inscription_id, &new_satpoint)?;
+    if let Some(mysql_database) = self.mysql_database.clone() {
+      mysql_database.insert_inscription(&inscription_id, &new_satpoint, &new_address)
+    }
 
     Ok(())
   }

@@ -52,20 +52,25 @@ pub struct MysqlDatabase {
 }
 
 impl MysqlDatabase {
-  fn new() -> Result<MysqlDatabase> {
-    let opts_builder = OptsBuilder::new().ip_or_hostname(Some("database_host"))
-      .user(Some("username"))
-      .pass(Some("password"))
-      .db_name(Some("database_name"));
+  pub fn new(
+    host: Option<String>,
+    username: Option<String>,
+    password: Option<String>,
+    network: Network
+  ) -> Result<MysqlDatabase> {
+    let opts_builder = OptsBuilder::new().ip_or_hostname(host)
+      .user(username)
+      .pass(password)
+      .db_name(Some(Self::get_database(network)));
     let pool = mysql::Pool::new::<Opts>(opts_builder.into()).map_err(|_| anyhow!("Create pool fail"))?;
 
     Ok(MysqlDatabase {
       pool,
-      network: Network::Bitcoin,
+      network,
     })
   }
 
-  fn get_conn(&self) -> Result<PooledConn> {
+  pub fn get_conn(&self) -> Result<PooledConn> {
     Ok(
       self
         .pool
@@ -74,20 +79,20 @@ impl MysqlDatabase {
     )
   }
 
-  fn get_database(&self) -> String {
-    match self.network {
-      Network::Bitcoin => "ord_testnet".to_owned(),
-      Network::Testnet => "ord_mainnet".to_owned(),
+  pub fn get_database(network: Network) -> String {
+    match network {
+      Network::Bitcoin => "ord_mainnet".to_owned(),
+      Network::Testnet => "ord_testnet".to_owned(),
       Network::Signet => todo!(),
       Network::Regtest => todo!(),
     }
   }
 
-  fn get_inscription_table(&self) -> String {
+  pub fn get_inscription_table(&self) -> String {
     "INSCRIPTION_ID_AND_SATPOINT".to_owned()
   }
 
-  fn encode_int_array(data: &[u8]) -> String {
+  pub fn encode_int_array(data: &[u8]) -> String {
     data
       .iter()
       .map(|x| x.to_string())
@@ -95,11 +100,11 @@ impl MysqlDatabase {
       .join(",")
   }
 
-  fn decode_int_array(data: String) -> Vec<u8> {
+  pub fn decode_int_array(data: String) -> Vec<u8> {
     data.split(",").map(|x| x.parse::<u8>().unwrap()).collect()
   }
 
-  fn get_inscription_by_address(&self, new_address: &String) -> Result<BTreeMap<SatPoint, InscriptionId>> {
+  pub fn get_inscription_by_address(&self, new_address: &String) -> Result<BTreeMap<SatPoint, InscriptionId>> {
     let tb = self.get_inscription_table();
     let query = format!("SELECT * FROM {} WHERE new_address = {}", tb, new_address);
     let mut conn = self.get_conn()?;
@@ -117,7 +122,7 @@ impl MysqlDatabase {
     Ok(map)
   }
 
-  fn insert_inscription(
+  pub fn insert_inscription(
     &self,
     inscription_id: &InscriptionIdValue,
     new_satpoint: &SatPointValue,

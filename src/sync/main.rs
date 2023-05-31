@@ -1,12 +1,13 @@
 use clap::{Arg, Command};
 use log::{error, info};
 use ord::chain::Chain;
-use ord::index::Index;
+use ord::index::{Index, MysqlDatabase};
 use ord::options::Options;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
+use bitcoin::Network;
 
 fn main() {
   std::env::set_var("RUST_LOG", "info");
@@ -54,7 +55,32 @@ fn main() {
         .long("wait-start")
         .takes_value(true)
         .help("Wait to start up."),
-    );
+    )
+    .arg(
+      Arg::new("mysql-host")
+        .long("mysql-host")
+        .takes_value(true)
+        .help("Mysql host."),
+    )
+    .arg(
+      Arg::new("mysql-username")
+        .long("mysql-username")
+        .takes_value(true)
+        .help("Mysql username."),
+    )
+    .arg(
+      Arg::new("mysql-password")
+        .long("mysql-password")
+        .takes_value(true)
+        .help("Mysql password."),
+    )
+    .arg(
+      Arg::new("mysql-database")
+        .long("mysql-database")
+        .takes_value(true)
+        .help("Mysql database."),
+    )
+    ;
 
   let matches = args.get_matches();
   let chain = matches
@@ -65,6 +91,11 @@ fn main() {
   let chain_argument = match chain {
     "main" => Chain::Mainnet,
     _ => Chain::Testnet,
+  };
+
+  let network = match chain {
+    "main" => Network::Bitcoin,
+    _ => Network::Testnet,
   };
 
   let bitcoin_data_dir: Option<PathBuf> = matches
@@ -80,6 +111,11 @@ fn main() {
   let wait_start = matches
     .get_one::<String>("wait-start")
     .map(|s| s.parse().unwrap_or(0));
+
+  let mysql_host = matches.get_one::<String>("mysql-host").cloned();
+  let mysql_username = matches.get_one::<String>("mysql-username").cloned();
+  let mysql_password = matches.get_one::<String>("mysql-password").cloned();
+  let mysql_database = matches.get_one::<String>("mysql-database").cloned();
 
   if let Some(w) = wait_start {
     info!("Wait {w}s to start...");
@@ -109,6 +145,12 @@ fn main() {
   };
 
   let my_struct = Arc::new(Mutex::new(options));
+  let database = Arc::new(MysqlDatabase::new(
+    mysql_host,
+    mysql_username,
+    mysql_password,
+    network,
+  ).unwrap());
 
   let mut count = 0;
   loop {
@@ -117,10 +159,11 @@ fn main() {
     }
 
     let thread_struct = Arc::clone(&my_struct);
+    let database = Arc::clone(&database);
     let child_thread = thread::spawn(move || {
       info!("Index {count}th update...");
       let my_struct = thread_struct.lock().unwrap();
-      match Index::open(&my_struct) {
+      match Index::open_with_mysql(&my_struct, database) {
         Ok(index) => {
           if let Err(e) = index.update() {
             error!("Index update error:{e}")
