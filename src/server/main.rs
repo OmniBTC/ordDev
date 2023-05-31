@@ -71,7 +71,6 @@ async fn _handle_request(
       Some(&"inscription") => {
         let addr = path.get(2).ok_or(anyhow!("not found address"))?;
         let data = mysql.get_inscription_by_address(&addr.clone().to_owned())?;
-        println!("{:?}", data);
         let json_str = serde_json::to_string(&data).map_err(|_| anyhow!("serde fail"))?;
         Ok(Response::new(Body::from(json_str)))
       }
