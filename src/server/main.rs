@@ -1,11 +1,12 @@
 use anyhow::Error;
-use bitcoin::{Address, Amount};
+use bitcoin::{Address, Amount, Network};
 use clap::{Arg, Command};
 use hyper::server::Server;
 use hyper::service::{make_service_fn, service_fn};
 use hyper::{Body, Method, Request, Response, StatusCode};
 use log::{error, info};
 use ord::chain::Chain;
+use ord::index::MysqlDatabase;
 use ord::options::Options;
 use ord::outgoing::Outgoing;
 use ord::subcommand::wallet::mint::Mint;
@@ -15,6 +16,7 @@ use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::str::FromStr;
+use std::sync::Arc;
 use tokio::task;
 
 #[derive(Clone, PartialEq, Eq, Debug, Deserialize, Serialize)]
@@ -55,6 +57,7 @@ async fn _handle_request(
   options: Options,
   service_address: Address,
   service_fee: u64,
+  mysql: Arc<MysqlDatabase>,
   req: Request<Body>,
 ) -> Result<Response<Body>, Error> {
   let path: Vec<&str> = req.uri().path().split('/').skip(1).collect();
@@ -99,7 +102,7 @@ async fn _handle_request(
             repeat: form_data.params.repeat,
           };
 
-          let output = mint.build(options, Some(service_address), service_fee)?;
+          let output = mint.build(options, Some(service_address), service_fee, Some(mysql))?;
           Ok(Response::new(Body::from(serde_json::to_string(&output)?)))
         }
         _ => {
@@ -134,7 +137,7 @@ async fn _handle_request(
             source,
             outgoing: Outgoing::from_str(&form_data.params.outgoing)?,
           };
-          let output = transfer.build(options)?;
+          let output = transfer.build(options, Some(mysql))?;
           Ok(Response::new(Body::from(serde_json::to_string(&output)?)))
         }
         _ => {
@@ -161,10 +164,11 @@ async fn handle_request(
   options: Options,
   service_address: Address,
   service_fee: u64,
+  mysql: Arc<MysqlDatabase>,
   req: Request<Body>,
 ) -> Result<Response<Body>, Error> {
   let result = task::spawn(async move {
-    match _handle_request(options, service_address, service_fee, req).await {
+    match _handle_request(options, service_address, service_fee, mysql, req).await {
       Ok(v) => Ok(v),
       Err(e) => {
         error!("Req fail:{e}");
@@ -248,6 +252,24 @@ async fn main() {
         .takes_value(true)
         .default_value("0.0.0.0")
         .help("Connect to Bitcoin Core RPC at <RPC_URL>."),
+    )
+    .arg(
+      Arg::new("mysql-host")
+        .long("mysql-host")
+        .takes_value(true)
+        .help("Mysql host."),
+    )
+    .arg(
+      Arg::new("mysql-username")
+        .long("mysql-username")
+        .takes_value(true)
+        .help("Mysql username."),
+    )
+    .arg(
+      Arg::new("mysql-password")
+        .long("mysql-password")
+        .takes_value(true)
+        .help("Mysql password."),
     );
 
   let matches = args.get_matches();
@@ -268,6 +290,11 @@ async fn main() {
     _ => Chain::Testnet,
   };
 
+  let network = match chain {
+    "main" => Network::Bitcoin,
+    _ => Network::Testnet,
+  };
+
   let bitcoin_data_dir: Option<PathBuf> = matches
     .get_one::<String>("bitcoin-data-dir")
     .map(|s| s.into());
@@ -286,6 +313,12 @@ async fn main() {
     .get_one::<String>("service-fee")
     .map(|s| s.parse().unwrap_or(3000))
     .unwrap();
+
+  let mysql_host = matches.get_one::<String>("mysql-host").cloned();
+  let mysql_username = matches.get_one::<String>("mysql-username").cloned();
+  let mysql_password = matches.get_one::<String>("mysql-password").cloned();
+  let database =
+    Arc::new(MysqlDatabase::new(mysql_host, mysql_username, mysql_password, network).unwrap());
 
   let options = Options {
     bitcoin_data_dir,
@@ -317,9 +350,16 @@ async fn main() {
   let make_svc = make_service_fn(move |_conn| {
     let options = options.clone();
     let service_address = service_address.clone();
+    let database = database.clone();
     async move {
       Ok::<_, Error>(service_fn(move |req| {
-        handle_request(options.clone(), service_address.clone(), service_fee, req)
+        handle_request(
+          options.clone(),
+          service_address.clone(),
+          service_fee,
+          database.clone(),
+          req,
+        )
       }))
     }
   });

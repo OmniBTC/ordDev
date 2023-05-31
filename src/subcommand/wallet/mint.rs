@@ -1,3 +1,4 @@
+use crate::index::MysqlDatabase;
 use bitcoin::consensus::encode::serialize_hex;
 use bitcoin::psbt::Psbt;
 use bitcoincore_rpc::RawTx;
@@ -51,6 +52,7 @@ impl Mint {
     options: Options,
     service_address: Option<Address>,
     service_fee: Option<Amount>,
+    mysql: Option<Arc<MysqlDatabase>>,
   ) -> Result<Output> {
     let repeat: u64 = self.repeat.unwrap_or(1);
     let extension = "data.".to_owned() + &self.extension.unwrap_or(".txt".to_owned());
@@ -78,10 +80,15 @@ impl Mint {
     let service_address = service_address.unwrap_or(source.clone());
 
     log::info!("Get utxo...");
-    let utxos = index.get_unspent_outputs_by_mempool(&format!("{}", source))?;
+    let query_address = &format!("{}", source);
+    let utxos = index.get_unspent_outputs_by_mempool(query_address)?;
 
     log::info!("Get inscriptions...");
-    let inscriptions = index.get_inscriptions(None)?;
+    let inscriptions = if let Some(mysql) = mysql {
+      mysql.get_inscription_by_address(query_address)?
+    } else {
+      index.get_inscriptions(None)?
+    };
 
     let commit_tx_change = [source.clone(), source.clone()];
 
@@ -128,7 +135,7 @@ impl Mint {
   }
 
   pub fn run(self, options: Options) -> Result {
-    print_json(self.build(options, None, Some(Self::SERVICE_FEE))?)?;
+    print_json(self.build(options, None, Some(Self::SERVICE_FEE), None)?)?;
     Ok(())
   }
 

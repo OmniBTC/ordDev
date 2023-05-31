@@ -1,4 +1,5 @@
 use super::*;
+use crate::index::MysqlDatabase;
 use bitcoin::consensus::encode::serialize_hex;
 use bitcoin::psbt::Psbt;
 use std::collections::BTreeSet;
@@ -21,7 +22,7 @@ pub struct Output {
 }
 
 impl Transfer {
-  pub fn build(self, options: Options) -> Result<Output> {
+  pub fn build(self, options: Options, mysql: Option<Arc<MysqlDatabase>>) -> Result<Output> {
     if !self
       .destination
       .is_valid_for_network(options.chain().network())
@@ -45,10 +46,15 @@ impl Transfer {
     // index.update()?;
 
     log::info!("Get utxo...");
-    let unspent_outputs = index.get_unspent_outputs_by_mempool(&format!("{}", self.source))?;
+    let query_address = &format!("{}", self.source);
+    let unspent_outputs = index.get_unspent_outputs_by_mempool(query_address)?;
 
     log::info!("Get inscriptions...");
-    let inscriptions = index.get_inscriptions(None)?;
+    let inscriptions = if let Some(mysql) = mysql {
+      mysql.get_inscription_by_address(query_address)?
+    } else {
+      index.get_inscriptions(None)?
+    };
 
     let change = [self.source.clone(), self.source.clone()];
 
@@ -108,7 +114,7 @@ impl Transfer {
   }
 
   pub fn run(self, options: Options) -> Result {
-    print_json(self.build(options)?)?;
+    print_json(self.build(options, None)?)?;
     Ok(())
   }
 
