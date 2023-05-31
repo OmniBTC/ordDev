@@ -57,7 +57,7 @@ async fn _handle_request(
   options: Options,
   service_address: Address,
   service_fee: u64,
-  mysql: Arc<MysqlDatabase>,
+  mysql: Option<Arc<MysqlDatabase>>,
   req: Request<Body>,
 ) -> Result<Response<Body>, Error> {
   let path: Vec<&str> = req.uri().path().split('/').skip(1).collect();
@@ -70,7 +70,9 @@ async fn _handle_request(
     (&Method::GET, Some(&"query")) => match path.get(1) {
       Some(&"inscription") => {
         let addr = path.get(2).ok_or(anyhow!("not found address"))?;
-        let data = mysql.get_inscription_by_address(&addr.clone().to_owned())?;
+        let data = mysql
+          .ok_or(anyhow!("not database"))?
+          .get_inscription_by_address(&addr.clone().to_owned())?;
         let json_str = serde_json::to_string(&data).map_err(|_| anyhow!("serde fail"))?;
         Ok(Response::new(Body::from(json_str)))
       }
@@ -106,7 +108,7 @@ async fn _handle_request(
             repeat: form_data.params.repeat,
           };
 
-          let output = mint.build(options, Some(service_address), service_fee, Some(mysql))?;
+          let output = mint.build(options, Some(service_address), service_fee, mysql)?;
           Ok(Response::new(Body::from(serde_json::to_string(&output)?)))
         }
         _ => {
@@ -141,7 +143,7 @@ async fn _handle_request(
             source,
             outgoing: Outgoing::from_str(&form_data.params.outgoing)?,
           };
-          let output = transfer.build(options, Some(mysql))?;
+          let output = transfer.build(options, mysql)?;
           Ok(Response::new(Body::from(serde_json::to_string(&output)?)))
         }
         _ => {
@@ -168,7 +170,7 @@ async fn handle_request(
   options: Options,
   service_address: Address,
   service_fee: u64,
-  mysql: Arc<MysqlDatabase>,
+  mysql: Option<Arc<MysqlDatabase>>,
   req: Request<Body>,
 ) -> Result<Response<Body>, Error> {
   let result = task::spawn(async move {
@@ -321,8 +323,13 @@ async fn main() {
   let mysql_host = matches.get_one::<String>("mysql-host").cloned();
   let mysql_username = matches.get_one::<String>("mysql-username").cloned();
   let mysql_password = matches.get_one::<String>("mysql-password").cloned();
-  let database =
-    Arc::new(MysqlDatabase::new(mysql_host, mysql_username, mysql_password, network).unwrap());
+  let database = if mysql_host.is_none() || mysql_username.is_none() || mysql_password.is_none() {
+    None
+  } else {
+    Some(Arc::new(
+      MysqlDatabase::new(mysql_host, mysql_username, mysql_password, network).unwrap(),
+    ))
+  };
 
   let options = Options {
     bitcoin_data_dir,
