@@ -1,4 +1,4 @@
-use anyhow::Error;
+use anyhow::{anyhow, Error};
 use bitcoin::{Address, Amount, Network};
 use clap::{Arg, Command};
 use hyper::server::Server;
@@ -67,11 +67,16 @@ async fn _handle_request(
     None
   };
   match (req.method(), path.first()) {
-    (&Method::GET, Some(&"/")) => {
-      // 处理GET请求
-      let response_body = "Hello, GET request!";
-      Ok(Response::new(Body::from(response_body)))
-    }
+    (&Method::GET, Some(&"query")) => match path.get(1) {
+      Some(&"inscription") => {
+        let addr = path.get(2).ok_or(anyhow!("not found address"))?;
+        let data = mysql.get_inscription_by_address(&addr.clone().to_owned())?;
+        println!("{:?}", data);
+        let json_str = serde_json::to_string(&data).map_err(|_| anyhow!("serde fail"))?;
+        Ok(Response::new(Body::from(json_str)))
+      }
+      _ => Ok(Response::new(Body::from("get not recognize"))),
+    },
     (&Method::POST, Some(&"mint")) => {
       // 处理POST请求
       let full_body = hyper::body::to_bytes(req.into_body()).await?;

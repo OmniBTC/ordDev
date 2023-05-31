@@ -109,7 +109,7 @@ impl MysqlDatabase {
     new_address: &String,
   ) -> Result<BTreeMap<SatPoint, InscriptionId>> {
     let tb = self.get_inscription_table();
-    let query = format!("SELECT * FROM {} WHERE new_address = {}", tb, new_address);
+    let query = format!("SELECT * FROM {} WHERE new_address = '{}'", tb, new_address);
     let mut conn = self.get_conn()?;
     let result: Vec<mysql::Row> = conn.query(query).map_err(|_| anyhow!("Query fail"))?;
     let mut map: BTreeMap<SatPoint, InscriptionId> = BTreeMap::new();
@@ -117,14 +117,14 @@ impl MysqlDatabase {
       let mut value: [u8; 44] = [0; 44];
       value.copy_from_slice(&Self::decode_int_array(
         row
-          .get("inscription_id")
+          .get("new_satpoint")
           .ok_or(anyhow!("Row inscription_id not exist"))?,
       ));
       let inscription_id = SatPoint::load(value);
       let mut value: [u8; 36] = [0; 36];
       value.copy_from_slice(&Self::decode_int_array(
         row
-          .get("new_satpoint")
+          .get("inscription_id")
           .ok_or(anyhow!("Row new_satpoint not exist"))?,
       ));
       let new_satpoint = InscriptionId::load(value);
