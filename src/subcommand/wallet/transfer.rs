@@ -49,10 +49,11 @@ impl Transfer {
     let query_address = &format!("{}", self.source);
     let unspent_outputs = index.get_unspent_outputs_by_mempool(query_address)?;
 
-    log::info!("Get inscriptions...");
     let inscriptions = if let Some(mysql) = mysql {
+      log::info!("Get inscriptions by mysql...");
       mysql.get_inscription_by_address(query_address)?
     } else {
+      log::info!("Get inscriptions by redb...");
       index.get_inscriptions(None)?
     };
 
