@@ -51,6 +51,12 @@ pub struct MysqlDatabase {
   pub network: Network,
 }
 
+pub struct MysqlInscription {
+  pub inscription_id: InscriptionIdValue,
+  pub new_satpoint: SatPointValue,
+  pub new_address: String,
+}
+
 impl MysqlDatabase {
   pub fn new(
     host: Option<String>,
@@ -70,7 +76,7 @@ impl MysqlDatabase {
   }
 
   pub fn get_conn(&self) -> Result<PooledConn> {
-    Ok(self.pool.get_conn().map_err(|_| anyhow!("Connect fail"))?)
+    self.pool.get_conn().map_err(|_| anyhow!("Connect fail"))
   }
 
   pub fn get_database(network: Network) -> String {
@@ -95,7 +101,7 @@ impl MysqlDatabase {
   }
 
   pub fn decode_int_array(data: String) -> Vec<u8> {
-    data.split(",").map(|x| x.parse::<u8>().unwrap()).collect()
+    data.split(',').map(|x| x.parse::<u8>().unwrap()).collect()
   }
 
   pub fn get_inscription_by_address(
@@ -127,31 +133,38 @@ impl MysqlDatabase {
     Ok(map)
   }
 
-  pub fn insert_inscription(
-    &self,
-    inscription_id: &InscriptionIdValue,
-    new_satpoint: &SatPointValue,
-    new_address: &String,
-  ) {
-    let inscription_id = Self::encode_int_array(inscription_id);
-    let new_satpoint = Self::encode_int_array(new_satpoint);
+  pub fn insert_inscriptions(&self, data: Vec<MysqlInscription>) -> Result {
+    if data.is_empty() {
+      return Ok(());
+    };
 
     let tb = self.get_inscription_table();
     let query = format!(
       "INSERT INTO {} (inscription_id, new_satpoint, new_address) VALUES (?, ?, ?)",
       tb
     );
-    let params = vec![inscription_id, new_satpoint, new_address.clone()];
-    match self.get_conn() {
-      Ok(mut conn) => {
-        let result = conn.exec_drop(query, params);
-        match result {
-          Ok(_) => log::info!("Insert successful"),
-          Err(err) => log::error!("Error: {err}"),
-        }
-      }
-      Err(err) => log::error!("Error: {err}"),
+
+    let mut conn = self.get_conn()?;
+
+    conn
+      .query_drop("START TRANSACTION")
+      .map_err(|_| anyhow!("Create transaction fail"))?;
+    for item in data.iter() {
+      conn
+        .exec_drop(
+          query.clone(),
+          (
+            Self::encode_int_array(&item.inscription_id),
+            Self::encode_int_array(&item.new_satpoint),
+            item.new_address.clone(),
+          ),
+        )
+        .map_err(|_| anyhow!("Execute transaction fail"))?;
     }
+    conn
+      .query_drop("COMMIT")
+      .map_err(|_| anyhow!("Commit transaction fail"))?;
+    Ok(())
   }
 }
 

@@ -76,10 +76,11 @@ impl<'a, 'db, 'tx> InscriptionUpdater<'a, 'db, 'tx> {
     tx: &Transaction,
     txid: Txid,
     input_sat_ranges: Option<&VecDeque<(u64, u64)>>,
-  ) -> Result<u64> {
+  ) -> Result<(u64, Vec<MysqlInscription>)> {
     let mut inscriptions = Vec::new();
 
     let mut input_value = 0;
+    let mut mysql_data: Vec<MysqlInscription> = vec![];
     for tx_in in &tx.input {
       if tx_in.previous_output.is_null() {
         input_value += Height(self.height).subsidy();
@@ -93,7 +94,6 @@ impl<'a, 'db, 'tx> InscriptionUpdater<'a, 'db, 'tx> {
             origin: Origin::Old { old_satpoint },
           });
         }
-
         input_value += if let Some(value) = self.value_cache.remove(&tx_in.previous_output) {
           value
         } else if let Some(value) = self
@@ -164,12 +164,15 @@ impl<'a, 'db, 'tx> InscriptionUpdater<'a, 'db, 'tx> {
           "".to_owned()
         };
 
-        self.update_inscription_location(
-          input_sat_ranges,
-          inscriptions.next().unwrap(),
-          new_satpoint,
+        let flotsam = inscriptions.next().unwrap();
+
+        mysql_data.push(MysqlInscription {
+          inscription_id: flotsam.inscription_id.store(),
+          new_satpoint: new_satpoint.store(),
           new_address,
-        )?;
+        });
+
+        self.update_inscription_location(input_sat_ranges, flotsam, new_satpoint)?;
       }
 
       output_value = end;
@@ -189,17 +192,17 @@ impl<'a, 'db, 'tx> InscriptionUpdater<'a, 'db, 'tx> {
           outpoint: OutPoint::null(),
           offset: self.lost_sats + flotsam.offset - output_value,
         };
-        self.update_inscription_location(input_sat_ranges, flotsam, new_satpoint, "".to_owned())?;
+        self.update_inscription_location(input_sat_ranges, flotsam, new_satpoint)?;
       }
 
-      Ok(self.reward - output_value)
+      Ok((self.reward - output_value, mysql_data))
     } else {
       self.flotsam.extend(inscriptions.map(|flotsam| Flotsam {
         offset: self.reward + flotsam.offset - output_value,
         ..flotsam
       }));
       self.reward += input_value - output_value;
-      Ok(0)
+      Ok((0, mysql_data))
     }
   }
 
@@ -208,7 +211,6 @@ impl<'a, 'db, 'tx> InscriptionUpdater<'a, 'db, 'tx> {
     input_sat_ranges: Option<&VecDeque<(u64, u64)>>,
     flotsam: Flotsam,
     new_satpoint: SatPoint,
-    new_address: String,
   ) -> Result {
     let inscription_id = flotsam.inscription_id.store();
 
@@ -256,9 +258,6 @@ impl<'a, 'db, 'tx> InscriptionUpdater<'a, 'db, 'tx> {
 
     self.satpoint_to_id.insert(&new_satpoint, &inscription_id)?;
     self.id_to_satpoint.insert(&inscription_id, &new_satpoint)?;
-    if let Some(mysql_database) = self.mysql_database.clone() {
-      mysql_database.insert_inscription(&inscription_id, &new_satpoint, &new_address)
-    }
 
     Ok(())
   }

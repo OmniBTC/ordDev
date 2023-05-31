@@ -440,6 +440,7 @@ impl Updater {
       index.mysql_database.clone(),
     )?;
 
+    let mut mysql_data: Vec<MysqlInscription> = vec![];
     if self.index_sats {
       let mut sat_to_satpoint = wtx.open_table(SAT_TO_SATPOINT)?;
       let mut outpoint_to_sat_ranges = wtx.open_table(OUTPOINT_TO_SAT_RANGES)?;
@@ -478,7 +479,7 @@ impl Updater {
           }
         }
 
-        self.index_transaction_sats(
+        let d = self.index_transaction_sats(
           tx,
           *txid,
           &mut sat_to_satpoint,
@@ -488,12 +489,13 @@ impl Updater {
           &mut inscription_updater,
           index_inscriptions,
         )?;
+        mysql_data.extend(d);
 
         coinbase_inputs.extend(input_sat_ranges);
       }
 
       if let Some((tx, txid)) = block.txdata.get(0) {
-        self.index_transaction_sats(
+        let d = self.index_transaction_sats(
           tx,
           *txid,
           &mut sat_to_satpoint,
@@ -503,6 +505,7 @@ impl Updater {
           &mut inscription_updater,
           index_inscriptions,
         )?;
+        mysql_data.extend(d);
       }
 
       if !coinbase_inputs.is_empty() {
@@ -532,7 +535,17 @@ impl Updater {
       }
     } else {
       for (tx, txid) in block.txdata.iter().skip(1).chain(block.txdata.first()) {
-        lost_sats += inscription_updater.index_transaction_inscriptions(tx, *txid, None)?;
+        let (v, d) = inscription_updater.index_transaction_inscriptions(tx, *txid, None)?;
+        lost_sats += v;
+        mysql_data.extend(d);
+      }
+    }
+
+    if let Some(mysql) = index.mysql_database.clone() {
+      let data_length = mysql_data.len();
+      match mysql.insert_inscriptions(mysql_data) {
+        Ok(_) => log::info!("Insert {data_length} item success"),
+        Err(err) => log::info!("Insert {data_length} item fail:{err}"),
       }
     }
 
@@ -561,9 +574,12 @@ impl Updater {
     outputs_traversed: &mut u64,
     inscription_updater: &mut InscriptionUpdater,
     index_inscriptions: bool,
-  ) -> Result {
+  ) -> Result<Vec<MysqlInscription>> {
+    let mut mysql_data: Vec<MysqlInscription> = vec![];
     if index_inscriptions {
-      inscription_updater.index_transaction_inscriptions(tx, txid, Some(input_sat_ranges))?;
+      let (_, d) =
+        inscription_updater.index_transaction_inscriptions(tx, txid, Some(input_sat_ranges))?;
+      mysql_data.extend(d);
     }
 
     for (vout, output) in tx.output.iter().enumerate() {
@@ -614,7 +630,7 @@ impl Updater {
       self.outputs_inserted_since_flush += 1;
     }
 
-    Ok(())
+    Ok(mysql_data)
   }
 
   fn commit(&mut self, wtx: WriteTransaction, value_cache: HashMap<OutPoint, u64>) -> Result {
