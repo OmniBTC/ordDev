@@ -137,8 +137,16 @@ fn main() {
   };
 
   let my_struct = Arc::new(Mutex::new(options));
-  let database =
-    Arc::new(MysqlDatabase::new(mysql_host, mysql_username, mysql_password, network).unwrap());
+
+  let database = if mysql_host.is_none() || mysql_username.is_none() || mysql_password.is_none() {
+    info!("Use redb...");
+    None
+  } else {
+    info!("Use mysql...");
+    Some(Arc::new(
+      MysqlDatabase::new(mysql_host, mysql_username, mysql_password, network).unwrap(),
+    ))
+  };
 
   let mut count = 0;
   loop {
@@ -147,11 +155,16 @@ fn main() {
     }
 
     let thread_struct = Arc::clone(&my_struct);
-    let database = Arc::clone(&database);
+    let database = database.clone();
     let child_thread = thread::spawn(move || {
       info!("Index {count}th update...");
       let my_struct = thread_struct.lock().unwrap();
-      match Index::open_with_mysql(&my_struct, database) {
+      let open_result = if database.is_some() {
+        Index::open_with_mysql(&my_struct, database.unwrap())
+      } else {
+        Index::open(&my_struct)
+      };
+      match open_result {
         Ok(index) => {
           if let Err(e) = index.update() {
             error!("Index update error:{e}")
