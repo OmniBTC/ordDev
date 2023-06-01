@@ -324,8 +324,10 @@ async fn main() {
   let mysql_username = matches.get_one::<String>("mysql-username").cloned();
   let mysql_password = matches.get_one::<String>("mysql-password").cloned();
   let database = if mysql_host.is_none() || mysql_username.is_none() || mysql_password.is_none() {
+    info!("Use redb...");
     None
   } else {
+    info!("Use mysql...");
     Some(Arc::new(
       MysqlDatabase::new(mysql_host, mysql_username, mysql_password, network).unwrap(),
     ))
