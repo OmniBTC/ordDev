@@ -60,7 +60,9 @@ pub struct ConstructTransaction {
 impl Encodable for ConstructTransaction {
   fn consensus_encode<W: io::Write + ?Sized>(&self, w: &mut W) -> Result<usize, io::Error> {
     let mut len = 0;
-    u8::try_from(self.pre_outputs.outputs.len()).expect("Len err").consensus_encode(w)?;
+    u8::try_from(self.pre_outputs.outputs.len())
+      .expect("Len err")
+      .consensus_encode(w)?;
     for i in &self.pre_outputs.outputs {
       len += i.consensus_encode(w)?;
     }

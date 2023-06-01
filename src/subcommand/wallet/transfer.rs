@@ -1,5 +1,5 @@
 use super::*;
-use crate::index::MysqlDatabase;
+use crate::index::{ConstructTransaction, MysqlDatabase, TransactionOutputArray};
 use bitcoin::consensus::encode::serialize_hex;
 use bitcoin::psbt::Psbt;
 use std::collections::BTreeSet;
@@ -18,6 +18,7 @@ pub struct Transfer {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Output {
   pub transaction: String,
+  pub commit_custom: Vec<String>,
   pub network_fee: u64,
 }
 
@@ -106,10 +107,13 @@ impl Transfer {
 
     let unsigned_transaction_psbt =
       Self::get_psbt(&unsigned_transaction, &unspent_outputs, &self.source)?;
+    let unsigned_commit_custom = Self::get_custom(&unsigned_transaction_psbt);
 
     log::info!("Build transfer success");
+
     Ok(Output {
       transaction: serialize_hex(&unsigned_transaction_psbt),
+      commit_custom: unsigned_commit_custom,
       network_fee,
     })
   }
@@ -135,6 +139,27 @@ impl Transfer {
       });
     }
     Ok(tx_psbt)
+  }
+
+  fn get_custom(tx: &Psbt) -> Vec<String> {
+    let unsigned_commit_custom = ConstructTransaction {
+      pre_outputs: TransactionOutputArray {
+        outputs: tx
+          .inputs
+          .iter()
+          .map(|v| v.witness_utxo.clone().expect("Must has input"))
+          .collect(),
+      },
+      cur_transaction: tx.unsigned_tx.clone(),
+    };
+
+    let mut result: Vec<String> = vec![serialize_hex(&unsigned_commit_custom)];
+    for v in tx.unsigned_tx.input.iter() {
+      result.push(format!("{}", v.previous_output.txid));
+      result.push(v.previous_output.vout.to_string())
+    }
+
+    result
   }
 
   fn calculate_fee(tx: &Transaction, utxos: &BTreeMap<OutPoint, Amount>) -> u64 {

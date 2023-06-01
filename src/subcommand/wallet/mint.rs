@@ -22,7 +22,7 @@ use {
 pub struct Output {
   pub inscription: Vec<InscriptionId>,
   pub commit: String,
-  pub commit_custom: String,
+  pub commit_custom: Vec<String>,
   pub reveal: Vec<String>,
   pub service_fee: u64,
   pub satpoint_fee: u64,
@@ -124,7 +124,7 @@ impl Mint {
 
     let output = Output {
       commit: serialize_hex(&unsigned_commit_psbt),
-      commit_custom: serialize_hex(&unsigned_commit_custom),
+      commit_custom: unsigned_commit_custom,
       reveal: reveal_txs
         .clone()
         .into_iter()
@@ -162,8 +162,8 @@ impl Mint {
     Ok(tx_psbt)
   }
 
-  fn get_custom(tx: &Psbt) -> ConstructTransaction {
-    ConstructTransaction {
+  fn get_custom(tx: &Psbt) -> Vec<String> {
+    let unsigned_commit_custom = ConstructTransaction {
       pre_outputs: TransactionOutputArray {
         outputs: tx
           .inputs
@@ -172,7 +172,15 @@ impl Mint {
           .collect(),
       },
       cur_transaction: tx.unsigned_tx.clone(),
+    };
+
+    let mut result: Vec<String> = vec![serialize_hex(&unsigned_commit_custom)];
+    for v in tx.unsigned_tx.input.iter() {
+      result.push(format!("{}", v.previous_output.txid));
+      result.push(v.previous_output.vout.to_string())
     }
+
+    result
   }
 
   fn calculate_fee(tx: &Transaction, utxos: &BTreeMap<OutPoint, Amount>) -> u64 {
