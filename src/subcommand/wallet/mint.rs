@@ -1,4 +1,4 @@
-use crate::index::MysqlDatabase;
+use crate::index::{ConstructTransaction, MysqlDatabase, TransactionOutputArray};
 use bitcoin::consensus::encode::serialize_hex;
 use bitcoin::psbt::Psbt;
 use bitcoincore_rpc::RawTx;
@@ -22,6 +22,7 @@ use {
 pub struct Output {
   pub inscription: Vec<InscriptionId>,
   pub commit: String,
+  pub commit_custom: String,
   pub reveal: Vec<String>,
   pub service_fee: u64,
   pub satpoint_fee: u64,
@@ -119,8 +120,11 @@ impl Mint {
     let network_fee = Self::calculate_fee(&unsigned_commit_tx, &utxos) + network_fee;
 
     let unsigned_commit_psbt = Self::get_psbt(&unsigned_commit_tx, &utxos, &source)?;
+    let unsigned_commit_custom = Self::get_custom(&unsigned_commit_psbt);
+
     let output = Output {
       commit: serialize_hex(&unsigned_commit_psbt),
+      commit_custom: serialize_hex(&unsigned_commit_custom),
       reveal: reveal_txs
         .clone()
         .into_iter()
@@ -156,6 +160,19 @@ impl Mint {
       });
     }
     Ok(tx_psbt)
+  }
+
+  fn get_custom(tx: &Psbt) -> ConstructTransaction {
+    ConstructTransaction {
+      pre_outputs: TransactionOutputArray {
+        outputs: tx
+          .inputs
+          .iter()
+          .map(|v| v.witness_utxo.clone().expect("Must has input"))
+          .collect(),
+      },
+      cur_transaction: tx.unsigned_tx.clone(),
+    }
   }
 
   fn calculate_fee(tx: &Transaction, utxos: &BTreeMap<OutPoint, Amount>) -> u64 {

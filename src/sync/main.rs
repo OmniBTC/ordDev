@@ -159,8 +159,8 @@ fn main() {
     let child_thread = thread::spawn(move || {
       info!("Index {count}th update...");
       let my_struct = thread_struct.lock().unwrap();
-      let open_result = if database.is_some() {
-        Index::open_with_mysql(&my_struct, database.unwrap())
+      let open_result = if let Some(db) = database {
+        Index::open_with_mysql(&my_struct, db)
       } else {
         Index::open(&my_struct)
       };

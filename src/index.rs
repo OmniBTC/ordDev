@@ -46,6 +46,30 @@ define_table! { SAT_TO_SATPOINT, u64, &SatPointValue }
 define_table! { STATISTIC_TO_COUNT, u64, u64 }
 define_table! { WRITE_TRANSACTION_STARTING_BLOCK_COUNT_TO_TIMESTAMP, u64, u128 }
 
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash, Serialize, Deserialize)]
+pub struct TransactionOutputArray {
+  pub outputs: Vec<TxOut>,
+}
+
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash, Serialize, Deserialize)]
+pub struct ConstructTransaction {
+  pub pre_outputs: TransactionOutputArray,
+  pub cur_transaction: Transaction,
+}
+
+impl Encodable for ConstructTransaction {
+  fn consensus_encode<W: io::Write + ?Sized>(&self, w: &mut W) -> Result<usize, io::Error> {
+    let mut len = 0;
+    u8::try_from(self.pre_outputs.outputs.len()).expect("Len err").consensus_encode(w)?;
+    for i in &self.pre_outputs.outputs {
+      len += i.consensus_encode(w)?;
+    }
+    len += self.cur_transaction.consensus_encode(w)?;
+
+    Ok(len)
+  }
+}
+
 pub struct MysqlDatabase {
   pub pool: mysql::Pool,
   pub network: Network,

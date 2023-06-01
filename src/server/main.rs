@@ -72,7 +72,7 @@ async fn _handle_request(
         let addr = path.get(2).ok_or(anyhow!("not found address"))?;
         let data = mysql
           .ok_or(anyhow!("not database"))?
-          .get_inscription_by_address(&addr.clone().to_owned())?;
+          .get_inscription_by_address(&(*addr).to_owned())?;
         let json_str = serde_json::to_string(&data).map_err(|_| anyhow!("serde fail"))?;
         Ok(Response::new(Body::from(json_str)))
       }
