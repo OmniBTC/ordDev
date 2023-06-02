@@ -221,6 +221,7 @@ pub(crate) enum Statistic {
   LostSats = 2,
   OutputsTraversed = 3,
   SatRanges = 4,
+  UnboundInscriptions = 5,
 }
 
 impl Statistic {
@@ -1072,7 +1073,7 @@ impl Index {
     &self,
     inscription_id: InscriptionId,
     satpoint: SatPoint,
-    sat: u64,
+    sat: Option<u64>,
   ) {
     let rtx = self.database.begin_read().unwrap();
 
@@ -1107,32 +1108,34 @@ impl Index {
       inscription_id,
     );
 
-    if self.has_sat_index().unwrap() {
-      assert_eq!(
-        InscriptionId::load(
-          *rtx
-            .open_table(SAT_TO_INSCRIPTION_ID)
-            .unwrap()
-            .get(&sat)
-            .unwrap()
-            .unwrap()
-            .value()
-        ),
-        inscription_id,
-      );
+    if let Some(sat) = sat {
+      if self.has_sat_index().unwrap() {
+        assert_eq!(
+          InscriptionId::load(
+            *rtx
+              .open_table(SAT_TO_INSCRIPTION_ID)
+              .unwrap()
+              .get(&sat)
+              .unwrap()
+              .unwrap()
+              .value()
+          ),
+          inscription_id,
+        );
 
-      assert_eq!(
-        SatPoint::load(
-          *rtx
-            .open_table(SAT_TO_SATPOINT)
-            .unwrap()
-            .get(&sat)
-            .unwrap()
-            .unwrap()
-            .value()
-        ),
-        satpoint,
-      );
+        assert_eq!(
+          SatPoint::load(
+            *rtx
+              .open_table(SAT_TO_SATPOINT)
+              .unwrap()
+              .get(&sat)
+              .unwrap()
+              .unwrap()
+              .value()
+          ),
+          satpoint,
+        );
+      }
     }
   }
 
@@ -1650,7 +1653,70 @@ mod tests {
           outpoint: OutPoint { txid, vout: 0 },
           offset: 0,
         },
-        50 * COIN_VALUE,
+        Some(50 * COIN_VALUE),
+      );
+    }
+  }
+
+  #[test]
+  fn inscriptions_without_sats_are_unbound() {
+    for context in Context::configurations() {
+      context.mine_blocks(1);
+
+      context.rpc_server.broadcast_tx(TransactionTemplate {
+        inputs: &[(1, 0, 0)],
+        fee: 50 * 100_000_000,
+        ..Default::default()
+      });
+
+      context.mine_blocks(1);
+
+      let txid = context.rpc_server.broadcast_tx(TransactionTemplate {
+        inputs: &[(2, 1, 0)],
+        witness: inscription("text/plain", "hello").to_witness(),
+        ..Default::default()
+      });
+
+      let inscription_id = InscriptionId::from(txid);
+
+      context.mine_blocks(1);
+
+      context.index.assert_inscription_location(
+        inscription_id,
+        SatPoint {
+          outpoint: unbound_outpoint(),
+          offset: 0,
+        },
+        None,
+      );
+
+      context.mine_blocks(1);
+
+      context.rpc_server.broadcast_tx(TransactionTemplate {
+        inputs: &[(4, 0, 0)],
+        fee: 50 * 100_000_000,
+        ..Default::default()
+      });
+
+      context.mine_blocks(1);
+
+      let txid = context.rpc_server.broadcast_tx(TransactionTemplate {
+        inputs: &[(5, 1, 0)],
+        witness: inscription("text/plain", "hello").to_witness(),
+        ..Default::default()
+      });
+
+      let inscription_id = InscriptionId::from(txid);
+
+      context.mine_blocks(1);
+
+      context.index.assert_inscription_location(
+        inscription_id,
+        SatPoint {
+          outpoint: unbound_outpoint(),
+          offset: 1,
+        },
+        None,
       );
     }
   }
@@ -1675,7 +1741,7 @@ mod tests {
           outpoint: OutPoint { txid, vout: 0 },
           offset: 0,
         },
-        50 * COIN_VALUE,
+        Some(50 * COIN_VALUE),
       );
 
       let send_txid = context.rpc_server.broadcast_tx(TransactionTemplate {
@@ -1694,7 +1760,7 @@ mod tests {
           },
           offset: 50 * COIN_VALUE,
         },
-        50 * COIN_VALUE,
+        Some(50 * COIN_VALUE),
       );
     }
   }
@@ -1737,7 +1803,7 @@ mod tests {
           },
           offset: 0,
         },
-        50 * COIN_VALUE,
+        Some(50 * COIN_VALUE),
       );
 
       context.index.assert_inscription_location(
@@ -1749,7 +1815,7 @@ mod tests {
           },
           offset: 50 * COIN_VALUE,
         },
-        100 * COIN_VALUE,
+        Some(100 * COIN_VALUE),
       );
     }
   }
@@ -1774,7 +1840,7 @@ mod tests {
           outpoint: OutPoint { txid, vout: 0 },
           offset: 0,
         },
-        50 * COIN_VALUE,
+        Some(50 * COIN_VALUE),
       );
 
       let send_txid = context.rpc_server.broadcast_tx(TransactionTemplate {
@@ -1794,7 +1860,7 @@ mod tests {
           },
           offset: 0,
         },
-        50 * COIN_VALUE,
+        Some(50 * COIN_VALUE),
       );
     }
   }
@@ -1823,7 +1889,7 @@ mod tests {
           outpoint: OutPoint { txid, vout: 0 },
           offset: 0,
         },
-        50 * COIN_VALUE,
+        Some(50 * COIN_VALUE),
       );
 
       let send_txid = context.rpc_server.broadcast_tx(TransactionTemplate {
@@ -1842,7 +1908,7 @@ mod tests {
           },
           offset: 50 * COIN_VALUE,
         },
-        50 * COIN_VALUE,
+        Some(50 * COIN_VALUE),
       );
     }
   }
@@ -1878,7 +1944,7 @@ mod tests {
           },
           offset: 50 * COIN_VALUE,
         },
-        50 * COIN_VALUE,
+        Some(50 * COIN_VALUE),
       );
     }
   }
@@ -1914,7 +1980,7 @@ mod tests {
           },
           offset: 50 * COIN_VALUE,
         },
-        50 * COIN_VALUE,
+        Some(50 * COIN_VALUE),
       );
     }
   }
@@ -1943,7 +2009,7 @@ mod tests {
           },
           offset: 50 * COIN_VALUE,
         },
-        50 * COIN_VALUE,
+        Some(50 * COIN_VALUE),
       );
     }
   }
@@ -1969,7 +2035,7 @@ mod tests {
           outpoint: OutPoint::null(),
           offset: 0,
         },
-        50 * COIN_VALUE,
+        Some(50 * COIN_VALUE),
       );
     }
   }
@@ -2006,7 +2072,7 @@ mod tests {
           outpoint: OutPoint::null(),
           offset: 0,
         },
-        50 * COIN_VALUE,
+        Some(50 * COIN_VALUE),
       );
 
       context.index.assert_inscription_location(
@@ -2015,7 +2081,7 @@ mod tests {
           outpoint: OutPoint::null(),
           offset: 50 * COIN_VALUE,
         },
-        150 * COIN_VALUE,
+        Some(150 * COIN_VALUE),
       );
     }
   }
@@ -2126,7 +2192,7 @@ mod tests {
           outpoint: OutPoint::null(),
           offset: 75 * COIN_VALUE,
         },
-        100 * COIN_VALUE,
+        Some(100 * COIN_VALUE),
       );
     }
   }
@@ -2152,7 +2218,7 @@ mod tests {
           outpoint: OutPoint { txid, vout: 1 },
           offset: 0,
         },
-        50 * COIN_VALUE,
+        Some(50 * COIN_VALUE),
       );
     }
   }
@@ -2177,7 +2243,7 @@ mod tests {
           outpoint: OutPoint::null(),
           offset: 0,
         },
-        50 * COIN_VALUE,
+        Some(50 * COIN_VALUE),
       );
     }
   }
@@ -2361,7 +2427,7 @@ mod tests {
           },
           offset: 0,
         },
-        50 * COIN_VALUE,
+        Some(50 * COIN_VALUE),
       );
 
       let second = context.rpc_server.broadcast_tx(TransactionTemplate {
@@ -2381,7 +2447,7 @@ mod tests {
           },
           offset: 0,
         },
-        50 * COIN_VALUE,
+        Some(50 * COIN_VALUE),
       );
 
       assert!(context

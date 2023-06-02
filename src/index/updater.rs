@@ -425,6 +425,11 @@ impl Updater {
       .map(|lost_sats| lost_sats.value())
       .unwrap_or(0);
 
+    let unbound_inscriptions = statistic_to_count
+      .get(&Statistic::UnboundInscriptions.key())?
+      .map(|unbound_inscriptions| unbound_inscriptions.value())
+      .unwrap_or(0);
+
     let mut inscription_updater = InscriptionUpdater::new(
       self.height,
       &mut inscription_id_to_satpoint,
@@ -436,6 +441,7 @@ impl Updater {
       &mut sat_to_inscription_id,
       &mut satpoint_to_inscription_id,
       block.header.time,
+      unbound_inscriptions,
       value_cache,
       index.mysql_database.clone(),
     )?;
@@ -535,8 +541,7 @@ impl Updater {
       }
     } else {
       for (tx, txid) in block.txdata.iter().skip(1).chain(block.txdata.first()) {
-        let (v, d) = inscription_updater.index_transaction_inscriptions(tx, *txid, None)?;
-        lost_sats += v;
+        let d = inscription_updater.index_transaction_inscriptions(tx, *txid, None)?;
         mysql_data.extend(d);
       }
     }
@@ -549,7 +554,12 @@ impl Updater {
       }
     }
 
-    statistic_to_count.insert(&Statistic::LostSats.key(), &lost_sats)?;
+    statistic_to_count.insert(&Statistic::LostSats.key(), &inscription_updater.lost_sats)?;
+
+    statistic_to_count.insert(
+      &Statistic::UnboundInscriptions.key(),
+      &inscription_updater.unbound_inscriptions,
+    )?;
 
     height_to_block_hash.insert(&self.height, &block.header.block_hash().store())?;
 
@@ -577,7 +587,7 @@ impl Updater {
   ) -> Result<Vec<MysqlInscription>> {
     let mut mysql_data: Vec<MysqlInscription> = vec![];
     if index_inscriptions {
-      let (_, d) =
+      let d =
         inscription_updater.index_transaction_inscriptions(tx, txid, Some(input_sat_ranges))?;
       mysql_data.extend(d);
     }
