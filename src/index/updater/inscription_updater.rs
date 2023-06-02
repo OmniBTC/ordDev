@@ -184,8 +184,8 @@ impl<'a, 'db, 'tx> InscriptionUpdater<'a, 'db, 'tx> {
         let flotsam = inscriptions.next().unwrap();
 
         mysql_data.push(MysqlInscription {
-          inscription_id: flotsam.inscription_id.store(),
-          new_satpoint: new_satpoint.store(),
+          inscription_id: flotsam.inscription_id,
+          new_satpoint,
           new_address,
         });
 

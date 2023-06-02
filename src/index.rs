@@ -1,5 +1,5 @@
 use mysql::prelude::*;
-use mysql::{Opts, OptsBuilder, PooledConn};
+use mysql::{Opts, OptsBuilder, params, PooledConn};
 use {
   self::{
     entry::{
@@ -78,8 +78,8 @@ pub struct MysqlDatabase {
 }
 
 pub struct MysqlInscription {
-  pub inscription_id: InscriptionIdValue,
-  pub new_satpoint: SatPointValue,
+  pub inscription_id: InscriptionId,
+  pub new_satpoint: SatPoint,
   pub new_address: String,
 }
 
@@ -118,18 +118,6 @@ impl MysqlDatabase {
     "INSCRIPTION_ID_AND_SATPOINT".to_owned()
   }
 
-  pub fn encode_int_array(data: &[u8]) -> String {
-    data
-      .iter()
-      .map(|x| x.to_string())
-      .collect::<Vec<String>>()
-      .join(",")
-  }
-
-  pub fn decode_int_array(data: String) -> Vec<u8> {
-    data.split(',').map(|x| x.parse::<u8>().unwrap()).collect()
-  }
-
   pub fn get_inscription_by_address(
     &self,
     new_address: &String,
@@ -140,20 +128,12 @@ impl MysqlDatabase {
     let result: Vec<mysql::Row> = conn.query(query).map_err(|_| anyhow!("Query fail"))?;
     let mut map: BTreeMap<SatPoint, InscriptionId> = BTreeMap::new();
     for row in result {
-      let mut value: [u8; 44] = [0; 44];
-      value.copy_from_slice(&Self::decode_int_array(
-        row
-          .get("new_satpoint")
-          .ok_or(anyhow!("Row inscription_id not exist"))?,
-      ));
-      let inscription_id = SatPoint::load(value);
-      let mut value: [u8; 36] = [0; 36];
-      value.copy_from_slice(&Self::decode_int_array(
-        row
-          .get("inscription_id")
-          .ok_or(anyhow!("Row new_satpoint not exist"))?,
-      ));
-      let new_satpoint = InscriptionId::load(value);
+      let inscription_id = SatPoint::from_str(&row
+        .get::<String, _>("new_satpoint")
+        .ok_or(anyhow!("Row inscription_id not exist"))?)?;
+      let new_satpoint = InscriptionId::from_str(&row
+        .get::<String, _>("inscription_id")
+        .ok_or(anyhow!("Row new_satpoint not exist"))?)?;
       map.insert(inscription_id, new_satpoint);
     }
     Ok(map)
@@ -166,7 +146,9 @@ impl MysqlDatabase {
 
     let tb = self.get_inscription_table();
     let query = format!(
-      "INSERT INTO {} (inscription_id, new_satpoint, new_address) VALUES (?, ?, ?)",
+      "INSERT INTO {} (inscription_id, new_satpoint, new_address)
+       VALUES (:inscription_id, :new_satpoint, :new_address)
+       ON DUPLICATE KEY UPDATE inscription_id = :inscription_id , new_satpoint = :new_satpoint, new_address = :new_address",
       tb
     );
 
@@ -179,11 +161,11 @@ impl MysqlDatabase {
       conn
         .exec_drop(
           query.clone(),
-          (
-            Self::encode_int_array(&item.inscription_id),
-            Self::encode_int_array(&item.new_satpoint),
-            item.new_address.clone(),
-          ),
+          params! {
+            "inscription_id" => format!("{}", item.inscription_id),
+            "new_satpoint" =>  format!("{}", item.new_satpoint),
+            "new_address" => item.new_address.clone(),
+          },
         )
         .map_err(|_| anyhow!("Execute transaction fail"))?;
     }
@@ -269,15 +251,15 @@ impl<T> BitcoinCoreRpcResultExt<T> for Result<T, bitcoincore_rpc::Error> {
     match self {
       Ok(ok) => Ok(Some(ok)),
       Err(bitcoincore_rpc::Error::JsonRpc(bitcoincore_rpc::jsonrpc::error::Error::Rpc(
-        bitcoincore_rpc::jsonrpc::error::RpcError { code: -8, .. },
-      ))) => Ok(None),
+                                            bitcoincore_rpc::jsonrpc::error::RpcError { code: -8, .. },
+                                          ))) => Ok(None),
       Err(bitcoincore_rpc::Error::JsonRpc(bitcoincore_rpc::jsonrpc::error::Error::Rpc(
-        bitcoincore_rpc::jsonrpc::error::RpcError { message, .. },
-      )))
-        if message.ends_with("not found") =>
-      {
-        Ok(None)
-      }
+                                            bitcoincore_rpc::jsonrpc::error::RpcError { message, .. },
+                                          )))
+      if message.ends_with("not found") =>
+        {
+          Ok(None)
+        }
       Err(err) => Err(err.into()),
     }
   }
@@ -354,7 +336,7 @@ impl Index {
         let tx = database.begin_write()?;
 
         #[cfg(test)]
-        let tx = {
+          let tx = {
           let mut tx = tx;
           tx.set_durability(redb::Durability::None);
           tx
@@ -828,8 +810,8 @@ impl Index {
           .open_table(SATPOINT_TO_INSCRIPTION_ID)?,
         outpoint,
       )?
-      .map(|(_satpoint, inscription_id)| inscription_id)
-      .collect(),
+        .map(|(_satpoint, inscription_id)| inscription_id)
+        .collect(),
     )
   }
 
@@ -1142,18 +1124,18 @@ impl Index {
   fn inscriptions_on_output<'a: 'tx, 'tx>(
     satpoint_to_id: &'a impl ReadableTable<&'static SatPointValue, &'static InscriptionIdValue>,
     outpoint: OutPoint,
-  ) -> Result<impl Iterator<Item = (SatPoint, InscriptionId)> + 'tx> {
+  ) -> Result<impl Iterator<Item=(SatPoint, InscriptionId)> + 'tx> {
     let start = SatPoint {
       outpoint,
       offset: 0,
     }
-    .store();
+      .store();
 
     let end = SatPoint {
       outpoint,
       offset: u64::MAX,
     }
-    .store();
+      .store();
 
     Ok(
       satpoint_to_id
@@ -1218,7 +1200,7 @@ mod tests {
       self
     }
 
-    fn args<T: Into<OsString>, I: IntoIterator<Item = T>>(mut self, args: I) -> Self {
+    fn args<T: Into<OsString>, I: IntoIterator<Item=T>>(mut self, args: I) -> Self {
       self.args.extend(args.into_iter().map(|arg| arg.into()));
       self
     }
