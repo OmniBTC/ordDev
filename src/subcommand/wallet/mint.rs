@@ -348,7 +348,10 @@ impl Mint {
 
     let mut reveal_txs: Vec<Transaction> = vec![];
 
-    let service_fee = (service_fee * (repeat as u64)).to_sat();
+    let mut service_fee = (service_fee * (repeat as u64)).to_sat();
+    if service_fee < 600 {
+      service_fee = 600;
+    }
     let satpoint_fee = (TransactionBuilder::TARGET_POSTAGE * (repeat as u64)).to_sat();
     let network_fee = reveal_fees.into_iter().sum::<Amount>().to_sat();
     for i in 0..repeat {
