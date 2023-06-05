@@ -43,6 +43,7 @@ struct TransferParam {
   destination: Address,
   outgoing: String,
   fee_rate: u64,
+  op_return: String,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Deserialize, Serialize)]
@@ -137,11 +138,17 @@ async fn _handle_request(
 
       match form_data.method.as_str() {
         "transfer" => {
+          let op_return = if form_data.params.op_return.is_empty() {
+            None
+          } else {
+            Some(form_data.params.op_return)
+          };
           let transfer = Transfer {
             fee_rate: FeeRate::from(form_data.params.fee_rate),
             destination,
             source,
             outgoing: Outgoing::from_str(&form_data.params.outgoing)?,
+            op_return,
           };
           let output = transfer.build(options, mysql)?;
           Ok(Response::new(Body::from(serde_json::to_string(&output)?)))
@@ -293,11 +300,15 @@ async fn main() {
 
   let chain_argument = match chain {
     "main" => Chain::Mainnet,
+    "regtest" => Chain::Regtest,
+    "signet" => Chain::Signet,
     _ => Chain::Testnet,
   };
 
   let network = match chain {
     "main" => Network::Bitcoin,
+    "regtest" => Network::Regtest,
+    "signet" => Network::Signet,
     _ => Network::Testnet,
   };
 

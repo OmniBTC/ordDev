@@ -13,6 +13,8 @@ pub struct Transfer {
   pub outgoing: Outgoing,
   #[clap(long, help = "Use fee rate of <FEE_RATE> sats/vB")]
   pub fee_rate: FeeRate,
+  #[clap(long, help = "ChainX evm address <OP_RETURN>.")]
+  pub op_return: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -93,15 +95,28 @@ impl Transfer {
       }
     };
 
-    let unsigned_transaction = TransactionBuilder::build_transaction_with_value(
-      satpoint,
-      inscriptions,
-      unspent_outputs.clone(),
-      self.destination,
-      change,
-      self.fee_rate,
-      amount,
-    )?;
+    let unsigned_transaction = if let Some(op_return) = self.op_return {
+      TransactionBuilder::build_transaction_with_op_return(
+        satpoint,
+        inscriptions,
+        unspent_outputs.clone(),
+        self.destination,
+        change,
+        self.fee_rate,
+        amount,
+        op_return,
+      )?
+    } else {
+      TransactionBuilder::build_transaction_with_value(
+        satpoint,
+        inscriptions,
+        unspent_outputs.clone(),
+        self.destination,
+        change,
+        self.fee_rate,
+        amount,
+      )?
+    };
 
     let network_fee = Self::calculate_fee(&unsigned_transaction, &unspent_outputs);
 

@@ -83,11 +83,15 @@ fn main() {
 
   let chain_argument = match chain {
     "main" => Chain::Mainnet,
+    "regtest" => Chain::Regtest,
+    "signet" => Chain::Signet,
     _ => Chain::Testnet,
   };
 
   let network = match chain {
     "main" => Network::Bitcoin,
+    "regtest" => Network::Regtest,
+    "signet" => Network::Signet,
     _ => Network::Testnet,
   };
 

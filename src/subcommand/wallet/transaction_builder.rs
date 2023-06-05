@@ -107,6 +107,7 @@ pub struct TransactionBuilder {
   unused_change_addresses: Vec<Address>,
   utxos: BTreeSet<OutPoint>,
   target: Target,
+  op_return: Option<Vec<u8>>,
 }
 
 type Result<T> = std::result::Result<T, Error>;
@@ -134,6 +135,7 @@ impl TransactionBuilder {
       change,
       fee_rate,
       Target::Postage,
+      None,
     )?
     .build_transaction()
   }
@@ -164,6 +166,39 @@ impl TransactionBuilder {
       change,
       fee_rate,
       Target::Value(output_value),
+      None,
+    )?
+    .build_transaction()
+  }
+
+  pub fn build_transaction_with_op_return(
+    outgoing: SatPoint,
+    inscriptions: BTreeMap<SatPoint, InscriptionId>,
+    amounts: BTreeMap<OutPoint, Amount>,
+    recipient: Address,
+    change: [Address; 2],
+    fee_rate: FeeRate,
+    output_value: Amount,
+    op_return: String,
+  ) -> Result<Transaction> {
+    let dust_value = recipient.script_pubkey().dust_value();
+
+    if output_value < dust_value {
+      return Err(Error::Dust {
+        output_value,
+        dust_value,
+      });
+    }
+
+    Self::new(
+      outgoing,
+      inscriptions,
+      amounts,
+      recipient,
+      change,
+      fee_rate,
+      Target::Value(output_value),
+      Some(String::into_bytes(op_return)),
     )?
     .build_transaction()
   }
@@ -187,6 +222,7 @@ impl TransactionBuilder {
     change: [Address; 2],
     fee_rate: FeeRate,
     target: Target,
+    op_return: Option<Vec<u8>>,
   ) -> Result<Self> {
     // if change.contains(&recipient) {
     //   return Err(Error::DuplicateAddress(recipient));
@@ -208,6 +244,7 @@ impl TransactionBuilder {
       recipient,
       unused_change_addresses: change.to_vec(),
       target,
+      op_return,
     })
   }
 
@@ -411,15 +448,60 @@ impl TransactionBuilder {
   /// inputs are taproot key path spends, which allows us to know that witnesses
   /// will all consist of single Schnorr signatures.
   fn estimate_vbytes(&self) -> usize {
-    Self::estimate_vbytes_with(
-      self.inputs.len(),
-      self
-        .outputs
-        .iter()
-        .map(|(address, _amount)| address)
-        .cloned()
+    if let Some(op_return) = &self.op_return {
+      Self::estimate_vbytes_with_op_return(
+        self.inputs.len(),
+        self
+          .outputs
+          .iter()
+          .map(|(address, _amount)| address)
+          .cloned()
+          .collect(),
+        op_return.clone(),
+      )
+    } else {
+      Self::estimate_vbytes_with(
+        self.inputs.len(),
+        self
+          .outputs
+          .iter()
+          .map(|(address, _amount)| address)
+          .cloned()
+          .collect(),
+      )
+    }
+  }
+
+  fn estimate_vbytes_with_op_return(
+    inputs: usize,
+    outputs: Vec<Address>,
+    op_return: Vec<u8>,
+  ) -> usize {
+    let mut tx = Transaction {
+      version: 1,
+      lock_time: PackedLockTime::ZERO,
+      input: (0..inputs)
+        .map(|_| TxIn {
+          previous_output: OutPoint::null(),
+          script_sig: Script::new(),
+          sequence: Sequence::ENABLE_RBF_NO_LOCKTIME,
+          witness: Witness::from_vec(vec![vec![0; TransactionBuilder::SCHNORR_SIGNATURE_SIZE]]),
+        })
         .collect(),
-    )
+      output: outputs
+        .into_iter()
+        .map(|address| TxOut {
+          value: 0,
+          script_pubkey: address.script_pubkey(),
+        })
+        .collect(),
+    };
+
+    tx.output.push(TxOut {
+      value: 0,
+      script_pubkey: Script::new_op_return(&op_return),
+    });
+    tx.vsize()
   }
 
   fn estimate_vbytes_with(inputs: usize, outputs: Vec<Address>) -> usize {
@@ -451,7 +533,7 @@ impl TransactionBuilder {
 
   fn build(self) -> Result<Transaction> {
     let recipient = self.recipient.script_pubkey();
-    let transaction = Transaction {
+    let mut transaction = Transaction {
       version: 1,
       lock_time: PackedLockTime::ZERO,
       input: self
@@ -473,6 +555,13 @@ impl TransactionBuilder {
         })
         .collect(),
     };
+
+    if let Some(op_return) = self.op_return {
+      transaction.output.push(TxOut {
+        value: 0,
+        script_pubkey: Script::new_op_return(&op_return),
+      });
+    }
 
     assert_eq!(
       self
@@ -548,6 +637,11 @@ impl TransactionBuilder {
 
     // let mut offset = 0;
     for output in &transaction.output {
+      if output.script_pubkey.is_op_return() {
+        // skip op_return
+        continue;
+      }
+
       if output.script_pubkey == self.recipient.script_pubkey() {
         let slop = self.fee_rate.fee(Self::ADDITIONAL_OUTPUT_VBYTES);
 
@@ -681,6 +775,7 @@ mod tests {
       [change(0), change(1)],
       FeeRate::try_from(1.0).unwrap(),
       Target::Postage,
+      None,
     )
     .unwrap()
     .select_outgoing()
@@ -724,6 +819,7 @@ mod tests {
         (change(1), Amount::from_sat(1_724)),
       ],
       target: Target::Postage,
+      op_return: None,
     };
 
     pretty_assert_eq!(
@@ -792,6 +888,7 @@ mod tests {
       [change(0), change(1)],
       FeeRate::try_from(1.0).unwrap(),
       Target::Postage,
+      None,
     )
     .unwrap()
     .select_outgoing()
@@ -905,6 +1002,7 @@ mod tests {
       [change(0), change(1)],
       FeeRate::try_from(1.0).unwrap(),
       Target::Postage,
+      None,
     )
     .unwrap()
     .build()
@@ -924,6 +1022,7 @@ mod tests {
       [change(0), change(1)],
       FeeRate::try_from(1.0).unwrap(),
       Target::Postage,
+      None,
     )
     .unwrap()
     .build()
@@ -943,6 +1042,7 @@ mod tests {
       [change(0), change(1)],
       FeeRate::try_from(1.0).unwrap(),
       Target::Postage,
+      None,
     )
     .unwrap()
     .build()
@@ -962,6 +1062,7 @@ mod tests {
       [change(0), change(1)],
       FeeRate::try_from(1.0).unwrap(),
       Target::Postage,
+      None,
     )
     .unwrap()
     .select_outgoing()
@@ -987,6 +1088,7 @@ mod tests {
       [change(0), change(1)],
       FeeRate::try_from(1.0).unwrap(),
       Target::Postage,
+      None,
     )
     .unwrap()
     .select_outgoing()
@@ -1035,6 +1137,7 @@ mod tests {
       [change(0), change(1)],
       FeeRate::try_from(1.0).unwrap(),
       Target::Postage,
+      None,
     )
     .unwrap()
     .select_outgoing()
@@ -1103,6 +1206,7 @@ mod tests {
       [change(0), change(1)],
       FeeRate::try_from(1.0).unwrap(),
       Target::Postage,
+      None,
     )
     .unwrap()
     .select_outgoing()
@@ -1131,6 +1235,7 @@ mod tests {
       [change(0), change(1)],
       FeeRate::try_from(1.0).unwrap(),
       Target::Postage,
+      None,
     )
     .unwrap()
     .select_outgoing()
@@ -1157,6 +1262,7 @@ mod tests {
       [change(0), change(1)],
       FeeRate::try_from(1.0).unwrap(),
       Target::Postage,
+      None,
     )
     .unwrap()
     .select_outgoing()
@@ -1180,6 +1286,7 @@ mod tests {
       [change(0), change(1)],
       FeeRate::try_from(1.0).unwrap(),
       Target::Postage,
+      None,
     )
     .unwrap()
     .select_outgoing()
@@ -1213,6 +1320,7 @@ mod tests {
         (change(1), Amount::from_sat(1_774)),
       ],
       target: Target::Postage,
+      op_return: None,
     }
     .build()
     .unwrap();
@@ -1242,6 +1350,7 @@ mod tests {
         (change(0), Amount::from_sat(1_774)),
       ],
       target: Target::Postage,
+      op_return: None,
     }
     .build()
     .unwrap();
