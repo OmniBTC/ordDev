@@ -185,10 +185,16 @@ async fn handle_request(
       Ok(v) => Ok(v),
       Err(e) => {
         error!("Req fail:{e}");
+        let format_error = format!("{}", e).to_lowercase();
+        let final_error = if format_error.contains("database") {
+          String::from("API requests are too frequent, please try again later")
+        } else {
+          format!("{}", e)
+        };
         Ok(
           Response::builder()
             .status(StatusCode::BAD_REQUEST)
-            .body(Body::from(format!("{}", e)))
+            .body(Body::from(final_error))
             .unwrap(),
         )
       }
@@ -199,7 +205,9 @@ async fn handle_request(
     Ok(response) => response,
     Err(panic) => {
       error!("Req panic:{panic}");
-      Ok(Response::new(Body::from("Index is updating")))
+      Ok(Response::new(Body::from(
+        "API requests are too frequent, please try again later",
+      )))
     }
   }
 }

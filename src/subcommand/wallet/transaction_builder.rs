@@ -76,7 +76,7 @@ impl fmt::Display for Error {
       Error::OutOfRange(outgoing_satpoint, maximum) => write!(f, "outgoing satpoint {outgoing_satpoint} offset higher than maximum {maximum}"),
       Error::NotEnoughCardinalUtxos => write!(
         f,
-        "wallet does not contain enough cardinal UTXOs, please add additional funds to wallet."
+        "Wallet balance is insufficient. Please reduce the number of minting times or deposit more funds."
       ),
       Error::UtxoContainsAdditionalInscription {
         outgoing_satpoint,

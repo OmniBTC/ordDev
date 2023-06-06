@@ -159,7 +159,7 @@ fn send_does_not_use_inscribed_sats_as_cardinal_utxos() {
   ))
   .rpc_server(&rpc_server)
   .expected_exit_code(1)
-  .expected_stderr("error: wallet does not contain enough cardinal UTXOs, please add additional funds to wallet.\n")
+  .expected_stderr("error: Wallet balance is insufficient. Please reduce the number of minting times or deposit more funds.\n")
   .run();
 }
 
