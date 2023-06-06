@@ -261,7 +261,6 @@ impl Mint {
     let commit_tx_address = Address::p2tr_tweaked(taproot_spend_info.output_key(), network);
 
     let mut reveal_fees: Vec<Amount> = vec![];
-    let mut next_remain_fees: Vec<Amount> = vec![];
 
     for i in (0..repeat).rev() {
       let reveal_output = if i == 0 && repeat == 1 {
@@ -276,31 +275,21 @@ impl Mint {
           },
         ]
       } else if i == 0 && repeat > 1 {
-        vec![
-          TxOut {
-            script_pubkey: destination.script_pubkey(),
-            value: 0,
-          },
-          TxOut {
+        let mut tx_out = vec![TxOut {
+          script_pubkey: destination.script_pubkey(),
+          value: 0,
+        }];
+        for _ in 1..repeat {
+          tx_out.push(TxOut {
             script_pubkey: commit_tx_address.script_pubkey(),
             value: 0,
-          },
-          TxOut {
-            script_pubkey: service_address.script_pubkey(),
-            value: 0,
-          },
-        ]
-      } else if i + 1 < repeat {
-        vec![
-          TxOut {
-            script_pubkey: destination.script_pubkey(),
-            value: 0,
-          },
-          TxOut {
-            script_pubkey: commit_tx_address.script_pubkey(),
-            value: 0,
-          },
-        ]
+          });
+        }
+        tx_out.push(TxOut {
+          script_pubkey: service_address.script_pubkey(),
+          value: 0,
+        });
+        tx_out
       } else {
         vec![TxOut {
           script_pubkey: destination.script_pubkey(),
@@ -314,17 +303,14 @@ impl Mint {
         reveal_output,
         &reveal_script,
       );
-      if i + 1 < repeat {
-        next_remain_fees.push(
-          (*reveal_fees.last().unwrap())
-            + (*next_remain_fees.last().unwrap_or(&Amount::ZERO))
-            + TransactionBuilder::TARGET_POSTAGE,
-        );
-      }
       reveal_fees.push(reveal_fee);
     }
     reveal_fees.reverse();
-    next_remain_fees.reverse();
+
+    let mut service_fee = service_fee * (repeat as u64);
+    if service_fee.to_sat() < 600 {
+      service_fee = Amount::from_sat(600);
+    }
 
     let unsigned_commit_tx = TransactionBuilder::build_transaction_with_value(
       satpoint,
@@ -333,10 +319,9 @@ impl Mint {
       commit_tx_address.clone(),
       change,
       commit_fee_rate,
-      reveal_fees[0]
-        + TransactionBuilder::TARGET_POSTAGE
-        + *next_remain_fees.get(0).unwrap_or(&Amount::ZERO)
-        + (service_fee * (repeat as u64)),
+      reveal_fees.clone().into_iter().sum::<Amount>()
+        + TransactionBuilder::TARGET_POSTAGE * (repeat as u64)
+        + service_fee,
     )?;
 
     let (vout, output) = unsigned_commit_tx
@@ -348,12 +333,9 @@ impl Mint {
 
     let mut reveal_txs: Vec<Transaction> = vec![];
 
-    let mut service_fee = (service_fee * (repeat as u64)).to_sat();
-    if service_fee < 600 {
-      service_fee = 600;
-    }
     let satpoint_fee = (TransactionBuilder::TARGET_POSTAGE * (repeat as u64)).to_sat();
-    let network_fee = reveal_fees.into_iter().sum::<Amount>().to_sat();
+    let network_fee = reveal_fees.clone().into_iter().sum::<Amount>().to_sat();
+    let service_fee = service_fee.to_sat();
     for i in 0..repeat {
       let reveal_output = if i == 0 && repeat == 1 {
         vec![
@@ -367,31 +349,21 @@ impl Mint {
           },
         ]
       } else if i == 0 && repeat > 1 {
-        vec![
-          TxOut {
-            script_pubkey: destination.script_pubkey(),
-            value: TransactionBuilder::TARGET_POSTAGE.to_sat(),
-          },
-          TxOut {
+        let mut tx_out = vec![TxOut {
+          script_pubkey: destination.script_pubkey(),
+          value: TransactionBuilder::TARGET_POSTAGE.to_sat(),
+        }];
+        for fee in reveal_fees.iter().take(repeat).skip(1) {
+          tx_out.push(TxOut {
             script_pubkey: commit_tx_address.script_pubkey(),
-            value: next_remain_fees[i].to_sat(),
-          },
-          TxOut {
-            script_pubkey: service_address.script_pubkey(),
-            value: service_fee,
-          },
-        ]
-      } else if i + 1 < repeat {
-        vec![
-          TxOut {
-            script_pubkey: destination.script_pubkey(),
-            value: TransactionBuilder::TARGET_POSTAGE.to_sat(),
-          },
-          TxOut {
-            script_pubkey: commit_tx_address.script_pubkey(),
-            value: next_remain_fees[i].to_sat(),
-          },
-        ]
+            value: (*fee + TransactionBuilder::TARGET_POSTAGE).to_sat(),
+          })
+        }
+        tx_out.push(TxOut {
+          script_pubkey: service_address.script_pubkey(),
+          value: service_fee,
+        });
+        tx_out
       } else {
         vec![TxOut {
           script_pubkey: destination.script_pubkey(),
