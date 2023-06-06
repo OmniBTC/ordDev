@@ -374,7 +374,7 @@ impl Mint {
       let (txid, vout) = if i == 0 {
         (unsigned_commit_tx.txid(), vout.try_into().unwrap())
       } else {
-        (reveal_txs[i - 1].txid(), u32::try_from(i).unwrap())
+        (reveal_txs[0].txid(), u32::try_from(i).unwrap())
       };
 
       let (mut reveal_tx, _fee) = Self::build_reveal_transaction(
