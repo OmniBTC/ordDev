@@ -87,7 +87,6 @@ impl Mint {
     let mut is_whitelist = false;
     let inscriptions = if let Some(mysql) = mysql {
       log::info!("Get inscriptions by mysql...");
-      println!("is_whitelist:{}", mysql.is_whitelist(query_address));
       is_whitelist = mysql.is_whitelist(query_address);
       mysql.get_inscription_by_address(query_address)?
     } else {
