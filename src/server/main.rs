@@ -62,11 +62,8 @@ async fn _handle_request(
   req: Request<Body>,
 ) -> Result<Response<Body>, Error> {
   let path: Vec<&str> = req.uri().path().split('/').skip(1).collect();
-  let service_fee = if service_fee > 0 {
-    Some(Amount::from_sat(service_fee))
-  } else {
-    None
-  };
+
+  let service_fee = Some(Amount::from_sat(service_fee));
   match (req.method(), path.first()) {
     (&Method::GET, Some(&"query")) => match path.get(1) {
       Some(&"inscription") => {

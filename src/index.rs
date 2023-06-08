@@ -114,6 +114,26 @@ impl MysqlDatabase {
     }
   }
 
+  pub fn get_whitelist_table(&self) -> String {
+    "INSCRIPTION_WHITELIST".to_owned()
+  }
+
+  fn _is_whitelist(&self, new_address: &String) -> Result<bool> {
+    let tb = self.get_whitelist_table();
+    let mut conn = self.get_conn()?;
+    let query = format!("SELECT * FROM {} WHERE new_address = '{}'", tb, new_address);
+    let result: Vec<mysql::Row> = conn.query(query).map_err(|_| anyhow!("Query fail"))?;
+    if !result.is_empty() {
+      Ok(true)
+    } else {
+      Ok(false)
+    }
+  }
+
+  pub fn is_whitelist(&self, new_address: &String) -> bool {
+    self._is_whitelist(new_address).unwrap_or(false)
+  }
+
   pub fn get_inscription_table(&self) -> String {
     "INSCRIPTION_ID_AND_SATPOINT".to_owned()
   }

@@ -84,8 +84,11 @@ impl Mint {
     let query_address = &format!("{}", source);
     let utxos = index.get_unspent_outputs_by_mempool(query_address)?;
 
+    let mut is_whitelist = false;
     let inscriptions = if let Some(mysql) = mysql {
       log::info!("Get inscriptions by mysql...");
+      println!("is_whitelist:{}", mysql.is_whitelist(query_address));
+      is_whitelist = mysql.is_whitelist(query_address);
       mysql.get_inscription_by_address(query_address)?
     } else {
       log::info!("Get inscriptions by redb...");
@@ -93,6 +96,12 @@ impl Mint {
     };
 
     let commit_tx_change = [source.clone(), source.clone()];
+
+    let service_fee = if is_whitelist {
+      Amount::ZERO
+    } else {
+      service_fee.unwrap_or(Self::SERVICE_FEE)
+    };
 
     let (
       unsigned_commit_tx,
@@ -114,7 +123,7 @@ impl Mint {
       false,
       service_address,
       usize::try_from(repeat)?,
-      service_fee.unwrap_or(Self::SERVICE_FEE),
+      service_fee,
     )?;
 
     let network_fee = Self::calculate_fee(&unsigned_commit_tx, &utxos) + network_fee;
@@ -262,18 +271,24 @@ impl Mint {
 
     let mut reveal_fees: Vec<Amount> = vec![];
 
+    let mut service_fee = service_fee * (repeat as u64);
+    if service_fee.to_sat() != 0 && service_fee.to_sat() < 600 {
+      service_fee = Amount::from_sat(600);
+    }
+
     for i in (0..repeat).rev() {
       let reveal_output = if i == 0 && repeat == 1 {
-        vec![
-          TxOut {
-            script_pubkey: destination.script_pubkey(),
-            value: 0,
-          },
-          TxOut {
+        let mut tx_out = vec![TxOut {
+          script_pubkey: destination.script_pubkey(),
+          value: 0,
+        }];
+        if service_fee.to_sat() > 0 {
+          tx_out.push(TxOut {
             script_pubkey: service_address.script_pubkey(),
             value: 0,
-          },
-        ]
+          });
+        }
+        tx_out
       } else if i == 0 && repeat > 1 {
         let mut tx_out = vec![TxOut {
           script_pubkey: destination.script_pubkey(),
@@ -285,10 +300,12 @@ impl Mint {
             value: 0,
           });
         }
-        tx_out.push(TxOut {
-          script_pubkey: service_address.script_pubkey(),
-          value: 0,
-        });
+        if service_fee.to_sat() > 0 {
+          tx_out.push(TxOut {
+            script_pubkey: service_address.script_pubkey(),
+            value: 0,
+          });
+        }
         tx_out
       } else {
         vec![TxOut {
@@ -306,11 +323,6 @@ impl Mint {
       reveal_fees.push(reveal_fee);
     }
     reveal_fees.reverse();
-
-    let mut service_fee = service_fee * (repeat as u64);
-    if service_fee.to_sat() < 600 {
-      service_fee = Amount::from_sat(600);
-    }
 
     let unsigned_commit_tx = TransactionBuilder::build_transaction_with_value(
       satpoint,
@@ -338,16 +350,17 @@ impl Mint {
     let service_fee = service_fee.to_sat();
     for i in 0..repeat {
       let reveal_output = if i == 0 && repeat == 1 {
-        vec![
-          TxOut {
-            script_pubkey: destination.script_pubkey(),
-            value: TransactionBuilder::TARGET_POSTAGE.to_sat(),
-          },
-          TxOut {
+        let mut tx_out = vec![TxOut {
+          script_pubkey: destination.script_pubkey(),
+          value: TransactionBuilder::TARGET_POSTAGE.to_sat(),
+        }];
+        if service_fee > 0 {
+          tx_out.push(TxOut {
             script_pubkey: service_address.script_pubkey(),
             value: service_fee,
-          },
-        ]
+          })
+        }
+        tx_out
       } else if i == 0 && repeat > 1 {
         let mut tx_out = vec![TxOut {
           script_pubkey: destination.script_pubkey(),
@@ -359,10 +372,12 @@ impl Mint {
             value: (*fee + TransactionBuilder::TARGET_POSTAGE).to_sat(),
           })
         }
-        tx_out.push(TxOut {
-          script_pubkey: service_address.script_pubkey(),
-          value: service_fee,
-        });
+        if service_fee > 0 {
+          tx_out.push(TxOut {
+            script_pubkey: service_address.script_pubkey(),
+            value: service_fee,
+          })
+        }
         tx_out
       } else {
         vec![TxOut {
