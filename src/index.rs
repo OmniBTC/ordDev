@@ -459,7 +459,7 @@ impl Index {
   ) -> Result<BTreeMap<OutPoint, Amount>> {
     let mut utxos = BTreeMap::new();
     let url = format!(
-      "{}api/address/{}/utxo",
+      "{}address/{}/utxo",
       self.options.chain().default_mempool_url(),
       addr,
     );

@@ -34,10 +34,10 @@ impl Chain {
   pub fn default_mempool_url(self) -> &'static str {
     match self {
       // https://mempool.coming.chat/
-      Self::Mainnet => "https://mempool.space/",
-      Self::Regtest => "https://mempool.space/testnet/",
-      Self::Signet => "https://mempool.coming.chat/signet/",
-      Self::Testnet => "https://mempool.space/testnet/",
+      Self::Mainnet => "https://electrs.coming.chat/mainnet/",
+      Self::Regtest => "https://mempool.space/testnet/api/",
+      Self::Signet => "https://mempool.coming.chat/signet/api/",
+      Self::Testnet => "https://mempool.space/testnet/api/",
     }
   }
 
