@@ -44,6 +44,7 @@ struct TransferParam {
   outgoing: String,
   fee_rate: u64,
   op_return: String,
+  brc20_transfer: bool,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Deserialize, Serialize)]
@@ -146,6 +147,7 @@ async fn _handle_request(
             source,
             outgoing: Outgoing::from_str(&form_data.params.outgoing)?,
             op_return,
+            brc20_transfer: Some(form_data.params.brc20_transfer),
           };
           let output = transfer.build(options, mysql)?;
           Ok(Response::new(Body::from(serde_json::to_string(&output)?)))

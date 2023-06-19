@@ -15,6 +15,8 @@ pub struct Transfer {
   pub fee_rate: FeeRate,
   #[clap(long, help = "ChainX evm address <OP_RETURN>.")]
   pub op_return: Option<String>,
+  #[clap(long, help = "Whether to transfer brc20.")]
+  pub brc20_transfer: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -44,13 +46,15 @@ impl Transfer {
       );
     }
 
+    let brc20_transfer = self.brc20_transfer.unwrap_or(false);
     log::info!("Open index...");
     let index = Index::read_open(&options)?;
     // index.update()?;
 
     log::info!("Get utxo...");
     let query_address = &format!("{}", self.source);
-    let unspent_outputs = index.get_unspent_outputs_by_mempool(query_address)?;
+    let is_filter = !brc20_transfer;
+    let unspent_outputs = index.get_unspent_outputs_by_mempool(query_address, is_filter)?;
 
     let inscriptions = if let Some(mysql) = mysql {
       log::info!("Get inscriptions by mysql...");
@@ -71,12 +75,27 @@ impl Transfer {
         }
         (satpoint, TransactionBuilder::TARGET_POSTAGE)
       }
-      Outgoing::InscriptionId(id) => (
-        index
-          .get_inscription_satpoint_by_id(id)?
-          .ok_or_else(|| anyhow!("Inscription {id} not found"))?,
-        TransactionBuilder::TARGET_POSTAGE,
-      ),
+      Outgoing::InscriptionId(id) => {
+        if brc20_transfer {
+          (
+            SatPoint {
+              outpoint: OutPoint {
+                txid: id.txid,
+                vout: 0,
+              },
+              offset: 0,
+            },
+            TransactionBuilder::TARGET_POSTAGE,
+          )
+        } else {
+          (
+            index
+              .get_inscription_satpoint_by_id(id)?
+              .ok_or_else(|| anyhow!("Inscription {id} not found"))?,
+            TransactionBuilder::TARGET_POSTAGE,
+          )
+        }
+      }
       Outgoing::Amount(amount) => {
         let inscribed_utxos = inscriptions
           .keys()

@@ -82,7 +82,7 @@ impl Mint {
 
     log::info!("Get utxo...");
     let query_address = &format!("{}", source);
-    let utxos = index.get_unspent_outputs_by_mempool(query_address)?;
+    let utxos = index.get_unspent_outputs_by_mempool(query_address, true)?;
 
     let mut is_whitelist = false;
     let inscriptions = if let Some(mysql) = mysql {
