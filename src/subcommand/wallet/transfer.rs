@@ -53,8 +53,6 @@ impl Transfer {
 
     log::info!("Get utxo...");
     let query_address = &format!("{}", self.source);
-    let is_filter = !brc20_transfer;
-    let unspent_outputs = index.get_unspent_outputs_by_mempool(query_address, is_filter)?;
 
     let inscriptions = if let Some(mysql) = mysql {
       log::info!("Get inscriptions by mysql...");
@@ -66,17 +64,29 @@ impl Transfer {
 
     let change = [self.source.clone(), self.source.clone()];
 
-    let (satpoint, amount) = match self.outgoing {
+    let (satpoint, amount, unspent_outputs) = match self.outgoing {
       Outgoing::SatPoint(satpoint) => {
         for inscription_satpoint in inscriptions.keys() {
           if satpoint == *inscription_satpoint {
             bail!("inscriptions must be sent by inscription ID");
           }
         }
-        (satpoint, TransactionBuilder::TARGET_POSTAGE)
+        (
+          satpoint,
+          TransactionBuilder::TARGET_POSTAGE,
+          index.get_unspent_outputs_by_mempool(query_address, BTreeMap::new())?,
+        )
       }
       Outgoing::InscriptionId(id) => {
         if brc20_transfer {
+          let mut remain_outpoint = BTreeMap::new();
+          remain_outpoint.insert(
+            OutPoint {
+              txid: id.txid,
+              vout: 0,
+            },
+            true,
+          );
           (
             SatPoint {
               outpoint: OutPoint {
@@ -86,6 +96,7 @@ impl Transfer {
               offset: 0,
             },
             TransactionBuilder::TARGET_POSTAGE,
+            index.get_unspent_outputs_by_mempool(query_address, remain_outpoint)?,
           )
         } else {
           (
@@ -93,6 +104,7 @@ impl Transfer {
               .get_inscription_satpoint_by_id(id)?
               .ok_or_else(|| anyhow!("Inscription {id} not found"))?,
             TransactionBuilder::TARGET_POSTAGE,
+            index.get_unspent_outputs_by_mempool(query_address, BTreeMap::new())?,
           )
         }
       }
@@ -101,7 +113,8 @@ impl Transfer {
           .keys()
           .map(|satpoint| satpoint.outpoint)
           .collect::<BTreeSet<OutPoint>>();
-
+        let unspent_outputs =
+          index.get_unspent_outputs_by_mempool(query_address, BTreeMap::new())?;
         let satpoint = unspent_outputs
           .keys()
           .find(|outpoint| !inscribed_utxos.contains(outpoint))
@@ -110,7 +123,7 @@ impl Transfer {
             offset: 0,
           })
           .ok_or_else(|| anyhow!("wallet contains no cardinal utxos"))?;
-        (satpoint, amount)
+        (satpoint, amount, unspent_outputs)
       }
     };
 

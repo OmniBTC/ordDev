@@ -476,7 +476,7 @@ impl Index {
   pub(crate) fn get_unspent_outputs_by_mempool(
     &self,
     addr: &str,
-    is_filter: bool,
+    remain_outpoint: BTreeMap<OutPoint, bool>,
   ) -> Result<BTreeMap<OutPoint, Amount>> {
     let mut utxos = BTreeMap::new();
     let url = format!(
@@ -496,22 +496,20 @@ impl Index {
           (outpoint, amount)
         }),
     );
-    if is_filter {
-      let rtx = self.database.begin_read()?;
-      let outpoint_to_value = rtx.open_table(OUTPOINT_TO_VALUE)?;
-      let mut filter_utxos = BTreeMap::new();
-      for (outpoint, amount) in utxos.into_iter() {
-        if outpoint_to_value.get(&outpoint.store())?.is_some() {
-          filter_utxos.insert(outpoint, amount);
-        }
+    let rtx = self.database.begin_read()?;
+    let outpoint_to_value = rtx.open_table(OUTPOINT_TO_VALUE)?;
+    let mut filter_utxos = BTreeMap::new();
+    for (outpoint, amount) in utxos.into_iter() {
+      if remain_outpoint.contains_key(&outpoint) {
+        filter_utxos.insert(outpoint, amount);
+      } else if outpoint_to_value.get(&outpoint.store())?.is_some() {
+        filter_utxos.insert(outpoint, amount);
       }
-      if filter_utxos.is_empty() {
-        Err(anyhow!("Not found utxo for addr"))
-      } else {
-        Ok(filter_utxos)
-      }
+    }
+    if filter_utxos.is_empty() {
+      Err(anyhow!("Not found utxo for addr"))
     } else {
-      Ok(utxos)
+      Ok(filter_utxos)
     }
   }
 
@@ -2575,7 +2573,7 @@ mod tests {
         .index
         .get_unspent_outputs_by_mempool(
           "tb1phsaern0qpcpqpv2h6cmu6fgae4y0lyx2tqhmqmgvv7c9whffm3rqjmlrqs",
-          true,
+          BTreeMap::new(),
         )
         .unwrap_err()
         .to_string();
