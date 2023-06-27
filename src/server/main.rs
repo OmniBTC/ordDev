@@ -45,6 +45,7 @@ struct TransferParam {
   fee_rate: u64,
   op_return: String,
   brc20_transfer: bool,
+  addition_outgoing: Vec<String>,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Deserialize, Serialize)]
@@ -141,6 +142,12 @@ async fn _handle_request(
           } else {
             Some(form_data.params.op_return)
           };
+
+          let mut addition_outgoing = vec![];
+          for item in form_data.params.addition_outgoing.iter() {
+            addition_outgoing.push(Outgoing::from_str(item)?)
+          }
+
           let transfer = Transfer {
             fee_rate: FeeRate::from(form_data.params.fee_rate),
             destination,
@@ -148,6 +155,7 @@ async fn _handle_request(
             outgoing: Outgoing::from_str(&form_data.params.outgoing)?,
             op_return,
             brc20_transfer: Some(form_data.params.brc20_transfer),
+            addition_outgoing,
           };
           let output = transfer.build(options, mysql)?;
           Ok(Response::new(Body::from(serde_json::to_string(&output)?)))

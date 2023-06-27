@@ -17,6 +17,7 @@ pub struct Transfer {
   pub op_return: Option<String>,
   #[clap(long, help = "Whether to transfer brc20.")]
   pub brc20_transfer: Option<bool>,
+  pub addition_outgoing: Vec<Outgoing>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -64,15 +65,31 @@ impl Transfer {
 
     let change = [self.source.clone(), self.source.clone()];
 
-    let (satpoint, amount, unspent_outputs) = match self.outgoing {
+    let (satpoints, amount, unspent_outputs) = match self.outgoing {
       Outgoing::SatPoint(satpoint) => {
         for inscription_satpoint in inscriptions.keys() {
           if satpoint == *inscription_satpoint {
             bail!("inscriptions must be sent by inscription ID");
           }
         }
+
+        let mut satpoints = vec![satpoint];
+
+        for item in &self.addition_outgoing {
+          if let Outgoing::SatPoint(satpoint) = *item {
+            for inscription_satpoint in inscriptions.keys() {
+              if satpoint == *inscription_satpoint {
+                bail!("inscriptions must be sent by inscription ID");
+              }
+            }
+            satpoints.push(satpoint)
+          } else {
+            bail!("Addition outgoing must be satpoint");
+          }
+        }
+
         (
-          satpoint,
+          satpoints,
           TransactionBuilder::TARGET_POSTAGE,
           index.get_unspent_outputs_by_mempool(query_address, BTreeMap::new())?,
         )
@@ -87,22 +104,62 @@ impl Transfer {
             },
             true,
           );
-          (
-            SatPoint {
-              outpoint: OutPoint {
-                txid: id.txid,
-                vout: 0,
-              },
-              offset: 0,
+
+          let satpoint = SatPoint {
+            outpoint: OutPoint {
+              txid: id.txid,
+              vout: 0,
             },
+            offset: 0,
+          };
+          let mut satpoints = vec![satpoint];
+
+          for item in &self.addition_outgoing {
+            if let Outgoing::InscriptionId(id) = *item {
+              remain_outpoint.insert(
+                OutPoint {
+                  txid: id.txid,
+                  vout: 0,
+                },
+                true,
+              );
+              let satpoint = SatPoint {
+                outpoint: OutPoint {
+                  txid: id.txid,
+                  vout: 0,
+                },
+                offset: 0,
+              };
+              satpoints.push(satpoint)
+            } else {
+              bail!("Addition outgoing must be satpoint");
+            }
+          }
+
+          (
+            satpoints,
             TransactionBuilder::TARGET_POSTAGE,
             index.get_unspent_outputs_by_mempool(query_address, remain_outpoint)?,
           )
         } else {
+          let satpoint = index
+            .get_inscription_satpoint_by_id(id)?
+            .ok_or_else(|| anyhow!("Inscription {id} not found"))?;
+          let mut satpoints = vec![satpoint];
+
+          for item in &self.addition_outgoing {
+            if let Outgoing::InscriptionId(id) = *item {
+              let satpoint = index
+                .get_inscription_satpoint_by_id(id)?
+                .ok_or_else(|| anyhow!("Inscription {id} not found"))?;
+              satpoints.push(satpoint)
+            } else {
+              bail!("Addition outgoing must be satpoint");
+            }
+          }
+
           (
-            index
-              .get_inscription_satpoint_by_id(id)?
-              .ok_or_else(|| anyhow!("Inscription {id} not found"))?,
+            satpoints,
             TransactionBuilder::TARGET_POSTAGE,
             index.get_unspent_outputs_by_mempool(query_address, BTreeMap::new())?,
           )
@@ -123,13 +180,13 @@ impl Transfer {
             offset: 0,
           })
           .ok_or_else(|| anyhow!("wallet contains no cardinal utxos"))?;
-        (satpoint, amount, unspent_outputs)
+        (vec![satpoint], amount, unspent_outputs)
       }
     };
 
     let unsigned_transaction = if let Some(op_return) = self.op_return {
-      TransactionBuilder::build_transaction_with_op_return(
-        satpoint,
+      TransactionBuilder::build_multi_outgoing_with_op_return(
+        satpoints,
         inscriptions,
         unspent_outputs.clone(),
         self.destination,
@@ -139,8 +196,8 @@ impl Transfer {
         op_return,
       )?
     } else {
-      TransactionBuilder::build_transaction_with_value(
-        satpoint,
+      TransactionBuilder::build_multi_outgoing_with_value(
+        satpoints,
         inscriptions,
         unspent_outputs.clone(),
         self.destination,
