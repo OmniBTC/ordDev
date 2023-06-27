@@ -90,7 +90,7 @@ impl Transfer {
 
         (
           satpoints,
-          TransactionBuilder::TARGET_POSTAGE,
+          TransactionBuilder::TARGET_POSTAGE * (1 + (self.addition_outgoing.len() as u64)),
           index.get_unspent_outputs_by_mempool(query_address, BTreeMap::new())?,
         )
       }
@@ -138,7 +138,7 @@ impl Transfer {
 
           (
             satpoints,
-            TransactionBuilder::TARGET_POSTAGE,
+            TransactionBuilder::TARGET_POSTAGE * (1 + (self.addition_outgoing.len() as u64)),
             index.get_unspent_outputs_by_mempool(query_address, remain_outpoint)?,
           )
         } else {
@@ -160,7 +160,7 @@ impl Transfer {
 
           (
             satpoints,
-            TransactionBuilder::TARGET_POSTAGE,
+            TransactionBuilder::TARGET_POSTAGE * (1 + (self.addition_outgoing.len() as u64)),
             index.get_unspent_outputs_by_mempool(query_address, BTreeMap::new())?,
           )
         }
