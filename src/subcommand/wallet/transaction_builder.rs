@@ -408,7 +408,6 @@ impl TransactionBuilder {
 
     self.utxos.remove(&outgoing.outpoint);
     self.inputs.push(outgoing.outpoint);
-    self.outputs.push((self.recipient.clone(), amount));
 
     tprintln!(
       "selected outgoing outpoint {} with value {}",
