@@ -203,9 +203,110 @@ impl TransactionBuilder {
     .build_transaction()
   }
 
+  pub fn build_multi_outgoing_with_postage(
+    outgoings: Vec<SatPoint>,
+    inscriptions: BTreeMap<SatPoint, InscriptionId>,
+    amounts: BTreeMap<OutPoint, Amount>,
+    recipient: Address,
+    change: [Address; 2],
+    fee_rate: FeeRate,
+  ) -> Result<Transaction> {
+    Self::new(
+      outgoings[0],
+      inscriptions,
+      amounts,
+      recipient,
+      change,
+      fee_rate,
+      Target::Postage,
+      None,
+    )?
+    .build_transaction_multi_outgoing((&outgoings[1..]).to_vec())
+  }
+
+  pub fn build_multi_outgoing_with_value(
+    outgoings: Vec<SatPoint>,
+    inscriptions: BTreeMap<SatPoint, InscriptionId>,
+    amounts: BTreeMap<OutPoint, Amount>,
+    recipient: Address,
+    change: [Address; 2],
+    fee_rate: FeeRate,
+    output_value: Amount,
+  ) -> Result<Transaction> {
+    let dust_value = recipient.script_pubkey().dust_value();
+
+    if output_value < dust_value {
+      return Err(Error::Dust {
+        output_value,
+        dust_value,
+      });
+    }
+
+    Self::new(
+      outgoings[0],
+      inscriptions,
+      amounts,
+      recipient,
+      change,
+      fee_rate,
+      Target::Value(output_value),
+      None,
+    )?
+    .build_transaction_multi_outgoing((&outgoings[1..]).to_vec())
+  }
+
+  pub fn build_multi_outgoing_with_op_return(
+    outgoings: Vec<SatPoint>,
+    inscriptions: BTreeMap<SatPoint, InscriptionId>,
+    amounts: BTreeMap<OutPoint, Amount>,
+    recipient: Address,
+    change: [Address; 2],
+    fee_rate: FeeRate,
+    output_value: Amount,
+    op_return: String,
+  ) -> Result<Transaction> {
+    let dust_value = recipient.script_pubkey().dust_value();
+
+    if output_value < dust_value {
+      return Err(Error::Dust {
+        output_value,
+        dust_value,
+      });
+    }
+
+    Self::new(
+      outgoings[0],
+      inscriptions,
+      amounts,
+      recipient,
+      change,
+      fee_rate,
+      Target::Value(output_value),
+      Some(String::into_bytes(op_return)),
+    )?
+    .build_transaction_multi_outgoing((&outgoings[1..]).to_vec())
+  }
+
   fn build_transaction(self) -> Result<Transaction> {
     self
       .select_outgoing()?
+      .align_outgoing()
+      .pad_alignment_output()?
+      .add_value()?
+      .strip_value()
+      .deduct_fee()
+      .build()
+  }
+
+  fn build_transaction_multi_outgoing(
+    mut self,
+    mut additions: Vec<SatPoint>,
+  ) -> Result<Transaction> {
+    self = self.select_outgoing()?;
+    while let Some(item) = additions.pop() {
+      self = self.add_outgoing(item)?;
+    }
+    self
       .align_outgoing()
       .pad_alignment_output()?
       .add_value()?
@@ -277,6 +378,41 @@ impl TransactionBuilder {
     tprintln!(
       "selected outgoing outpoint {} with value {}",
       self.outgoing.outpoint,
+      amount.to_sat()
+    );
+
+    Ok(self)
+  }
+
+  fn add_outgoing(mut self, outgoing: SatPoint) -> Result<Self> {
+    for (inscribed_satpoint, inscription_id) in &self.inscriptions {
+      if outgoing.outpoint == inscribed_satpoint.outpoint
+        && outgoing.offset != inscribed_satpoint.offset
+      {
+        return Err(Error::UtxoContainsAdditionalInscription {
+          outgoing_satpoint: outgoing,
+          inscribed_satpoint: *inscribed_satpoint,
+          inscription_id: *inscription_id,
+        });
+      }
+    }
+
+    let amount = *self
+      .amounts
+      .get(&outgoing.outpoint)
+      .ok_or(Error::NotInWallet(outgoing))?;
+
+    if outgoing.offset >= amount.to_sat() {
+      return Err(Error::OutOfRange(outgoing, amount.to_sat() - 1));
+    }
+
+    self.utxos.remove(&outgoing.outpoint);
+    self.inputs.push(outgoing.outpoint);
+    self.outputs.push((self.recipient.clone(), amount));
+
+    tprintln!(
+      "selected outgoing outpoint {} with value {}",
+      outgoing.outpoint,
       amount.to_sat()
     );
 
