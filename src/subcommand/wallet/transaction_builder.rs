@@ -221,7 +221,7 @@ impl TransactionBuilder {
       Target::Postage,
       None,
     )?
-    .build_transaction_multi_outgoing((&outgoings[1..]).to_vec())
+    .build_transaction_multi_outgoing(outgoings[1..].to_vec())
   }
 
   pub fn build_multi_outgoing_with_value(
@@ -252,7 +252,7 @@ impl TransactionBuilder {
       Target::Value(output_value),
       None,
     )?
-    .build_transaction_multi_outgoing((&outgoings[1..]).to_vec())
+    .build_transaction_multi_outgoing(outgoings[1..].to_vec())
   }
 
   pub fn build_multi_outgoing_with_op_return(
@@ -284,7 +284,7 @@ impl TransactionBuilder {
       Target::Value(output_value),
       Some(String::into_bytes(op_return)),
     )?
-    .build_transaction_multi_outgoing((&outgoings[1..]).to_vec())
+    .build_transaction_multi_outgoing(outgoings[1..].to_vec())
   }
 
   fn build_transaction(self) -> Result<Transaction> {

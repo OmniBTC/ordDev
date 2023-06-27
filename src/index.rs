@@ -500,9 +500,9 @@ impl Index {
     let outpoint_to_value = rtx.open_table(OUTPOINT_TO_VALUE)?;
     let mut filter_utxos = BTreeMap::new();
     for (outpoint, amount) in utxos.into_iter() {
-      if remain_outpoint.contains_key(&outpoint) {
-        filter_utxos.insert(outpoint, amount);
-      } else if outpoint_to_value.get(&outpoint.store())?.is_some() {
+      if remain_outpoint.contains_key(&outpoint)
+        || outpoint_to_value.get(&outpoint.store())?.is_some()
+      {
         filter_utxos.insert(outpoint, amount);
       }
     }
