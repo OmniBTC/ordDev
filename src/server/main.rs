@@ -63,7 +63,7 @@ struct MintsParam {
   source: Address,
   content: Vec<String>,
   destination: Option<Address>,
-  extension: Option<String>
+  extension: Option<String>,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Deserialize, Serialize)]
@@ -137,7 +137,7 @@ async fn _handle_request(
           Ok(response)
         }
       }
-    },
+    }
     (&Method::POST, Some(&"mints")) => {
       // 处理POST请求
       let full_body = hyper::body::to_bytes(req.into_body()).await?;
