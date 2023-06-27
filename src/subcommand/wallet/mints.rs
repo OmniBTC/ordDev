@@ -399,7 +399,7 @@ impl Mint {
         }];
         for (j, fee) in reveal_fees.iter().take(repeat).skip(1).enumerate() {
           tx_out.push(TxOut {
-            script_pubkey: commit_tx_address[j].script_pubkey(),
+            script_pubkey: commit_tx_address[j + 1].script_pubkey(),
             value: (*fee + TransactionBuilder::TARGET_POSTAGE).to_sat(),
           })
         }
