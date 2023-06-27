@@ -10,6 +10,7 @@ use ord::index::MysqlDatabase;
 use ord::options::Options;
 use ord::outgoing::Outgoing;
 use ord::subcommand::wallet::mint::Mint;
+use ord::subcommand::wallet::mints;
 use ord::subcommand::wallet::transfer::Transfer;
 use ord::FeeRate;
 use serde::{Deserialize, Serialize};
@@ -54,6 +55,23 @@ struct TransferData {
   id: Option<u32>,
   method: String,
   params: TransferParam,
+}
+
+#[derive(Clone, PartialEq, Eq, Debug, Deserialize, Serialize)]
+struct MintsParam {
+  fee_rate: u64,
+  source: Address,
+  content: Vec<String>,
+  destination: Option<Address>,
+  extension: Option<String>
+}
+
+#[derive(Clone, PartialEq, Eq, Debug, Deserialize, Serialize)]
+struct MintsData {
+  jsonrpc: Option<String>,
+  id: Option<u32>,
+  method: String,
+  params: MintsParam,
 }
 
 async fn _handle_request(
@@ -106,6 +124,47 @@ async fn _handle_request(
             extension: form_data.params.extension,
             content: form_data.params.content,
             repeat: form_data.params.repeat,
+          };
+
+          let output = mint.build(options, Some(service_address), service_fee, mysql)?;
+          Ok(Response::new(Body::from(serde_json::to_string(&output)?)))
+        }
+        _ => {
+          let response = Response::builder()
+            .status(StatusCode::NOT_FOUND)
+            .body(Body::from("Method not found"))
+            .unwrap();
+          Ok(response)
+        }
+      }
+    },
+    (&Method::POST, Some(&"mints")) => {
+      // 处理POST请求
+      let full_body = hyper::body::to_bytes(req.into_body()).await?;
+      let decoded_body = String::from_utf8_lossy(&full_body).to_string();
+
+      let form_data: MintsData = match serde_json::from_str(&decoded_body) {
+        Ok(data) => data,
+        Err(_) => {
+          return Ok(Response::new(Body::from("Invalid form data")));
+        }
+      };
+      let source = form_data.params.source;
+      let destination = form_data
+        .params
+        .destination
+        .clone()
+        .unwrap_or(source.clone());
+      info!("Mints from {source} to {destination}");
+
+      match form_data.method.as_str() {
+        "mints" => {
+          let mint = mints::Mint {
+            fee_rate: FeeRate::from(form_data.params.fee_rate),
+            destination: form_data.params.destination,
+            source,
+            extension: form_data.params.extension,
+            content: form_data.params.content,
           };
 
           let output = mint.build(options, Some(service_address), service_fee, mysql)?;
