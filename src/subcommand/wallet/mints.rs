@@ -325,7 +325,7 @@ impl Mint {
           script_pubkey: destination.script_pubkey(),
           value: 0,
         }];
-        for item in commit_tx_address.iter().take(repeat).skip(1){
+        for item in commit_tx_address.iter().take(repeat).skip(1) {
           tx_out.push(TxOut {
             script_pubkey: item.script_pubkey(),
             value: 0,

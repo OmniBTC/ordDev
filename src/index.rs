@@ -638,6 +638,10 @@ impl Index {
     Ok(info)
   }
 
+  pub fn reorg_height(&self, target_height: u64) -> Result {
+    Updater::reorg_height(self, target_height)
+  }
+
   pub fn update(&self) -> Result {
     Updater::update(self)
   }

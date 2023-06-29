@@ -40,6 +40,32 @@ pub(crate) struct Updater {
 }
 
 impl Updater {
+  pub(crate) fn reorg_height(index: &Index, target_height: u64) -> Result {
+    let wtx = index.begin_write()?;
+    let mut height = wtx
+      .open_table(HEIGHT_TO_BLOCK_HASH)?
+      .range(0..)?
+      .rev()
+      .next()
+      .map(|(height, _hash)| height.value())
+      .unwrap_or(0);
+
+    {
+      let mut height_to_block_hash = wtx.open_table(HEIGHT_TO_BLOCK_HASH)?;
+
+      while height > target_height {
+        log::info!("Reorg height to {height}");
+        height_to_block_hash.remove(height)?;
+        height = height
+          .checked_sub(1)
+          .ok_or_else(|| anyhow!("Check sub fail"))?;
+      }
+    }
+
+    wtx.commit()?;
+    Ok(())
+  }
+
   pub(crate) fn update(index: &Index) -> Result {
     let wtx = index.begin_write()?;
 

@@ -77,6 +77,10 @@ path = "src/server/main.rs"
 name = "ord_index"
 path = "src/sync/main.rs"
 
+[[bin]]
+name = "ord_reorg"
+path = "src/reorg/main.rs"
+
 [lib]
 name = "ord"
 path = "src/lib.rs"
