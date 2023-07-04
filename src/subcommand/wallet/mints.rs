@@ -1,6 +1,6 @@
 use crate::index::{ConstructTransaction, MysqlDatabase, TransactionOutputArray};
-use bitcoin::consensus::encode::serialize_hex;
 use bitcoin::psbt::Psbt;
+use bitcoin::{consensus::encode::serialize_hex, AddressType};
 use bitcoincore_rpc::RawTx;
 use {
   super::*,
@@ -81,6 +81,23 @@ impl Mint {
         options.chain()
       );
     }
+    // check address types, only support p2tr and p2wpkh
+    let address_type = if let Some(address_type) = source.address_type() {
+      if (address_type == AddressType::P2tr) || (address_type == AddressType::P2wpkh) {
+        address_type
+      } else {
+        bail!(
+          "Address type `{}` is not valid, only support p2tr and p2wpkh",
+          address_type
+        );
+      }
+    } else {
+      bail!(
+        "Address `{}` is not valid for {}",
+        source,
+        options.chain()
+      );
+    };
 
     let service_address = service_address.unwrap_or(source.clone());
 
@@ -114,6 +131,7 @@ impl Mint {
       satpoint_fee,
       network_fee,
     ) = Mint::create_inscription_transactions(
+      address_type,
       None,
       inscription,
       inscriptions,
@@ -204,6 +222,7 @@ impl Mint {
   }
 
   fn create_inscription_transactions(
+    input_type: AddressType,
     satpoint: Option<SatPoint>,
     inscription: Vec<Inscription>,
     inscriptions: BTreeMap<SatPoint, InscriptionId>,
@@ -356,6 +375,7 @@ impl Mint {
     reveal_fees.reverse();
 
     let unsigned_commit_tx = TransactionBuilder::build_transaction_with_value(
+      input_type,
       satpoint,
       inscriptions,
       utxos,

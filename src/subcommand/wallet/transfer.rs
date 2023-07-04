@@ -2,6 +2,7 @@ use super::*;
 use crate::index::{ConstructTransaction, MysqlDatabase, TransactionOutputArray};
 use bitcoin::consensus::encode::serialize_hex;
 use bitcoin::psbt::Psbt;
+use bitcoin::AddressType;
 use std::collections::BTreeSet;
 
 #[derive(Debug, Parser)]
@@ -46,6 +47,24 @@ impl Transfer {
         options.chain()
       );
     }
+
+    // check address types, only support p2tr and p2wpkh
+    let address_type = if let Some(address_type) = self.source.address_type() {
+      if (address_type == AddressType::P2tr) || (address_type == AddressType::P2wpkh) {
+        address_type
+      } else {
+        bail!(
+          "Address type `{}` is not valid, only support p2tr and p2wpkh",
+          address_type
+        );
+      }
+    } else {
+      bail!(
+        "Address `{}` is not valid for {}",
+        self.source,
+        options.chain()
+      );
+    };
 
     let brc20_transfer = self.brc20_transfer.unwrap_or(false);
     log::info!("Open index...");
@@ -186,6 +205,7 @@ impl Transfer {
 
     let unsigned_transaction = if let Some(op_return) = self.op_return {
       TransactionBuilder::build_multi_outgoing_with_op_return(
+        address_type,
         satpoints,
         inscriptions,
         unspent_outputs.clone(),
@@ -197,6 +217,7 @@ impl Transfer {
       )?
     } else {
       TransactionBuilder::build_multi_outgoing_with_value(
+        address_type,
         satpoints,
         inscriptions,
         unspent_outputs.clone(),

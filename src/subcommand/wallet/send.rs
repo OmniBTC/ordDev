@@ -1,3 +1,5 @@
+use bitcoin::AddressType;
+
 use {super::*, crate::wallet::Wallet};
 
 #[derive(Debug, Parser)]
@@ -22,6 +24,24 @@ impl Send {
         options.chain()
       );
     }
+
+    // check address types, only support p2tr and p2wpkh
+    let address_type = if let Some(address_type) = self.address.address_type() {
+      if (address_type == AddressType::P2tr) || (address_type == AddressType::P2wpkh) {
+        address_type
+      } else {
+        bail!(
+          "Address type `{}` is not valid, only support p2tr and p2wpkh",
+          address_type
+        );
+      }
+    } else {
+      bail!(
+        "Address `{}` is not valid for {}",
+        self.address,
+        options.chain()
+      );
+    };
 
     let index = Index::open(&options)?;
     index.update()?;
@@ -72,6 +92,7 @@ impl Send {
     let change = [get_change_address(&client)?, get_change_address(&client)?];
 
     let unsigned_transaction = TransactionBuilder::build_transaction_with_postage(
+      address_type,
       satpoint,
       inscriptions,
       unspent_outputs,

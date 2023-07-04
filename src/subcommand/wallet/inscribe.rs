@@ -1,3 +1,5 @@
+use bitcoin::AddressType;
+
 use {
   super::*,
   crate::wallet::Wallet,
@@ -217,6 +219,7 @@ impl Inscribe {
     );
 
     let unsigned_commit_tx = TransactionBuilder::build_transaction_with_value(
+      AddressType::P2tr,
       satpoint,
       inscriptions,
       utxos,

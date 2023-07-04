@@ -32,6 +32,8 @@
 //! method that the built transaction is correct with respect to the feature,
 //! and a test that the assertion fires as expected.
 
+use bitcoin::AddressType;
+
 use {
   super::*,
   bitcoin::{
@@ -100,6 +102,7 @@ pub struct TransactionBuilder {
   change_addresses: BTreeSet<Address>,
   fee_rate: FeeRate,
   inputs: Vec<OutPoint>,
+  input_type: AddressType,
   inscriptions: BTreeMap<SatPoint, InscriptionId>,
   outgoing: SatPoint,
   outputs: Vec<(Address, Amount)>,
@@ -117,9 +120,11 @@ impl TransactionBuilder {
   const ADDITIONAL_OUTPUT_VBYTES: usize = 43;
   const MAX_POSTAGE: Amount = Amount::from_sat(2 * 10_000);
   const SCHNORR_SIGNATURE_SIZE: usize = 64;
+  const P2WPKH_WINETSS_SIZE: usize = 108;
   pub(crate) const TARGET_POSTAGE: Amount = Amount::from_sat(546);
 
   pub fn build_transaction_with_postage(
+    input_type: AddressType,
     outgoing: SatPoint,
     inscriptions: BTreeMap<SatPoint, InscriptionId>,
     amounts: BTreeMap<OutPoint, Amount>,
@@ -128,6 +133,7 @@ impl TransactionBuilder {
     fee_rate: FeeRate,
   ) -> Result<Transaction> {
     Self::new(
+      input_type,
       outgoing,
       inscriptions,
       amounts,
@@ -141,6 +147,7 @@ impl TransactionBuilder {
   }
 
   pub fn build_transaction_with_value(
+    input_type: AddressType,
     outgoing: SatPoint,
     inscriptions: BTreeMap<SatPoint, InscriptionId>,
     amounts: BTreeMap<OutPoint, Amount>,
@@ -159,6 +166,7 @@ impl TransactionBuilder {
     }
 
     Self::new(
+      input_type,
       outgoing,
       inscriptions,
       amounts,
@@ -172,6 +180,7 @@ impl TransactionBuilder {
   }
 
   pub fn build_transaction_with_op_return(
+    input_type: AddressType,
     outgoing: SatPoint,
     inscriptions: BTreeMap<SatPoint, InscriptionId>,
     amounts: BTreeMap<OutPoint, Amount>,
@@ -191,6 +200,7 @@ impl TransactionBuilder {
     }
 
     Self::new(
+      input_type,
       outgoing,
       inscriptions,
       amounts,
@@ -204,6 +214,7 @@ impl TransactionBuilder {
   }
 
   pub fn build_multi_outgoing_with_postage(
+    input_type: AddressType,
     outgoings: Vec<SatPoint>,
     inscriptions: BTreeMap<SatPoint, InscriptionId>,
     amounts: BTreeMap<OutPoint, Amount>,
@@ -212,6 +223,7 @@ impl TransactionBuilder {
     fee_rate: FeeRate,
   ) -> Result<Transaction> {
     Self::new(
+      input_type,
       outgoings[0],
       inscriptions,
       amounts,
@@ -225,6 +237,7 @@ impl TransactionBuilder {
   }
 
   pub fn build_multi_outgoing_with_value(
+    input_type: AddressType,
     outgoings: Vec<SatPoint>,
     inscriptions: BTreeMap<SatPoint, InscriptionId>,
     amounts: BTreeMap<OutPoint, Amount>,
@@ -243,6 +256,7 @@ impl TransactionBuilder {
     }
 
     Self::new(
+      input_type,
       outgoings[0],
       inscriptions,
       amounts,
@@ -256,6 +270,7 @@ impl TransactionBuilder {
   }
 
   pub fn build_multi_outgoing_with_op_return(
+    input_type: AddressType,
     outgoings: Vec<SatPoint>,
     inscriptions: BTreeMap<SatPoint, InscriptionId>,
     amounts: BTreeMap<OutPoint, Amount>,
@@ -275,6 +290,7 @@ impl TransactionBuilder {
     }
 
     Self::new(
+      input_type,
       outgoings[0],
       inscriptions,
       amounts,
@@ -316,6 +332,7 @@ impl TransactionBuilder {
   }
 
   fn new(
+    input_type: AddressType,
     outgoing: SatPoint,
     inscriptions: BTreeMap<SatPoint, InscriptionId>,
     amounts: BTreeMap<OutPoint, Amount>,
@@ -339,6 +356,7 @@ impl TransactionBuilder {
       change_addresses: change.iter().cloned().collect(),
       fee_rate,
       inputs: Vec::new(),
+      input_type,
       inscriptions,
       outgoing,
       outputs: Vec::new(),
@@ -587,6 +605,7 @@ impl TransactionBuilder {
     if let Some(op_return) = &self.op_return {
       Self::estimate_vbytes_with_op_return(
         self.inputs.len(),
+        self.input_type,
         self
           .outputs
           .iter()
@@ -598,6 +617,7 @@ impl TransactionBuilder {
     } else {
       Self::estimate_vbytes_with(
         self.inputs.len(),
+        self.input_type,
         self
           .outputs
           .iter()
@@ -610,9 +630,15 @@ impl TransactionBuilder {
 
   fn estimate_vbytes_with_op_return(
     inputs: usize,
+    input_type: AddressType,
     outputs: Vec<Address>,
     op_return: Vec<u8>,
   ) -> usize {
+    let witness_size = if input_type == AddressType::P2tr {
+      TransactionBuilder::SCHNORR_SIGNATURE_SIZE
+    } else {
+      TransactionBuilder::P2WPKH_WINETSS_SIZE
+    };
     let mut tx = Transaction {
       version: 1,
       lock_time: PackedLockTime::ZERO,
@@ -621,7 +647,7 @@ impl TransactionBuilder {
           previous_output: OutPoint::null(),
           script_sig: Script::new(),
           sequence: Sequence::ENABLE_RBF_NO_LOCKTIME,
-          witness: Witness::from_vec(vec![vec![0; TransactionBuilder::SCHNORR_SIGNATURE_SIZE]]),
+          witness: Witness::from_vec(vec![vec![0; witness_size]]),
         })
         .collect(),
       output: outputs
@@ -640,7 +666,12 @@ impl TransactionBuilder {
     tx.vsize()
   }
 
-  fn estimate_vbytes_with(inputs: usize, outputs: Vec<Address>) -> usize {
+  fn estimate_vbytes_with(inputs: usize, input_type: AddressType, outputs: Vec<Address>) -> usize {
+    let witness_size = if input_type == AddressType::P2tr {
+      TransactionBuilder::SCHNORR_SIGNATURE_SIZE
+    } else {
+      TransactionBuilder::P2WPKH_WINETSS_SIZE
+    };
     Transaction {
       version: 1,
       lock_time: PackedLockTime::ZERO,
@@ -649,7 +680,7 @@ impl TransactionBuilder {
           previous_output: OutPoint::null(),
           script_sig: Script::new(),
           sequence: Sequence::ENABLE_RBF_NO_LOCKTIME,
-          witness: Witness::from_vec(vec![vec![0; TransactionBuilder::SCHNORR_SIGNATURE_SIZE]]),
+          witness: Witness::from_vec(vec![vec![0; witness_size]]),
         })
         .collect(),
       output: outputs
@@ -828,8 +859,13 @@ impl TransactionBuilder {
     }
 
     let mut modified_tx = transaction.clone();
+    let witness_size = if self.input_type == AddressType::P2tr {
+      TransactionBuilder::SCHNORR_SIGNATURE_SIZE
+    } else {
+      TransactionBuilder::P2WPKH_WINETSS_SIZE
+    };
     for input in &mut modified_tx.input {
-      input.witness = Witness::from_vec(vec![vec![0; 64]]);
+      input.witness = Witness::from_vec(vec![vec![0; witness_size]]);
     }
     let expected_fee = self.fee_rate.fee(modified_tx.vsize());
 
@@ -904,6 +940,7 @@ mod tests {
     ];
 
     let tx_builder = TransactionBuilder::new(
+      AddressType::P2tr,
       satpoint(2, 0),
       BTreeMap::new(),
       utxos.clone().into_iter().collect(),
@@ -940,6 +977,7 @@ mod tests {
     amounts.insert(outpoint(3), Amount::from_sat(2_000));
 
     let tx_builder = TransactionBuilder {
+      input_type: AddressType::P2tr,
       amounts,
       fee_rate: FeeRate::try_from(1.0).unwrap(),
       utxos: BTreeSet::new(),
@@ -978,6 +1016,7 @@ mod tests {
     let utxos = vec![(outpoint(1), Amount::from_sat(5_000))];
 
     assert!(TransactionBuilder::build_transaction_with_postage(
+      AddressType::P2tr,
       satpoint(1, 0),
       BTreeMap::new(),
       utxos.into_iter().collect(),
@@ -995,6 +1034,7 @@ mod tests {
 
     pretty_assert_eq!(
       TransactionBuilder::build_transaction_with_postage(
+        AddressType::P2tr,
         satpoint(1, 0),
         BTreeMap::new(),
         utxos.into_iter().collect(),
@@ -1017,6 +1057,7 @@ mod tests {
     let utxos = vec![(outpoint(1), Amount::from_sat(5_000))];
 
     TransactionBuilder::new(
+      AddressType::P2tr,
       satpoint(1, 4_950),
       BTreeMap::new(),
       utxos.into_iter().collect(),
@@ -1043,6 +1084,7 @@ mod tests {
 
     pretty_assert_eq!(
       TransactionBuilder::build_transaction_with_postage(
+        AddressType::P2tr,
         satpoint(1, 4_950),
         BTreeMap::new(),
         utxos.into_iter().collect(),
@@ -1065,6 +1107,7 @@ mod tests {
 
     pretty_assert_eq!(
       TransactionBuilder::build_transaction_with_postage(
+        AddressType::P2tr,
         satpoint(1, 4_950),
         BTreeMap::new(),
         utxos.into_iter().collect(),
@@ -1085,6 +1128,7 @@ mod tests {
 
     pretty_assert_eq!(
       TransactionBuilder::build_transaction_with_postage(
+        AddressType::P2tr,
         satpoint(1, 4_950),
         BTreeMap::new(),
         utxos.into_iter().collect(),
@@ -1105,6 +1149,7 @@ mod tests {
 
     pretty_assert_eq!(
       TransactionBuilder::build_transaction_with_postage(
+        AddressType::P2tr,
         satpoint(1, 4_950),
         BTreeMap::new(),
         utxos.into_iter().collect(),
@@ -1129,6 +1174,7 @@ mod tests {
   #[should_panic(expected = "invariant: outgoing sat is contained in utxos")]
   fn invariant_satpoint_outpoint_is_contained_in_utxos() {
     TransactionBuilder::new(
+      AddressType::P2tr,
       satpoint(2, 0),
       BTreeMap::new(),
       vec![(outpoint(1), Amount::from_sat(4))]
@@ -1149,6 +1195,7 @@ mod tests {
   #[should_panic(expected = "invariant: outgoing sat is contained in utxos")]
   fn invariant_satpoint_offset_is_contained_in_utxos() {
     TransactionBuilder::new(
+      AddressType::P2tr,
       satpoint(1, 4),
       BTreeMap::new(),
       vec![(outpoint(1), Amount::from_sat(4))]
@@ -1169,6 +1216,7 @@ mod tests {
   #[should_panic(expected = "invariant: inputs spend outgoing sat")]
   fn invariant_inputs_spend_sat() {
     TransactionBuilder::new(
+      AddressType::P2tr,
       satpoint(1, 2),
       BTreeMap::new(),
       vec![(outpoint(1), Amount::from_sat(5))]
@@ -1189,6 +1237,7 @@ mod tests {
   #[should_panic(expected = "invariant: outgoing sat is sent to recipient")]
   fn invariant_sat_is_sent_to_recipient() {
     let mut builder = TransactionBuilder::new(
+      AddressType::P2tr,
       satpoint(1, 2),
       BTreeMap::new(),
       vec![(outpoint(1), Amount::from_sat(5))]
@@ -1215,6 +1264,7 @@ mod tests {
   #[should_panic(expected = "invariant: outgoing sat is found in outputs")]
   fn invariant_sat_is_found_in_outputs() {
     let mut builder = TransactionBuilder::new(
+      AddressType::P2tr,
       satpoint(1, 2),
       BTreeMap::new(),
       vec![(outpoint(1), Amount::from_sat(5))]
@@ -1241,6 +1291,7 @@ mod tests {
 
     pretty_assert_eq!(
       TransactionBuilder::build_transaction_with_postage(
+        AddressType::P2tr,
         satpoint(1, 0),
         BTreeMap::new(),
         utxos.into_iter().collect(),
@@ -1266,6 +1317,7 @@ mod tests {
     let utxos = vec![(outpoint(1), Amount::from_sat(1_000_000))];
 
     TransactionBuilder::new(
+      AddressType::P2tr,
       satpoint(1, 0),
       BTreeMap::new(),
       utxos.into_iter().collect(),
@@ -1288,6 +1340,7 @@ mod tests {
 
     pretty_assert_eq!(
       TransactionBuilder::build_transaction_with_postage(
+        AddressType::P2tr,
         satpoint(1, 3_333),
         BTreeMap::new(),
         utxos.into_iter().collect(),
@@ -1313,6 +1366,7 @@ mod tests {
 
     pretty_assert_eq!(
       TransactionBuilder::build_transaction_with_postage(
+        AddressType::P2tr,
         satpoint(1, 1),
         BTreeMap::new(),
         utxos.into_iter().collect(),
@@ -1335,6 +1389,7 @@ mod tests {
     let utxos = vec![(outpoint(1), Amount::from_sat(10_000))];
 
     let mut builder = TransactionBuilder::new(
+      AddressType::P2tr,
       satpoint(1, 3_333),
       BTreeMap::new(),
       utxos.into_iter().collect(),
@@ -1364,6 +1419,7 @@ mod tests {
     let utxos = vec![(outpoint(1), Amount::from_sat(10_000))];
 
     TransactionBuilder::new(
+      AddressType::P2tr,
       satpoint(1, 1),
       BTreeMap::new(),
       utxos.into_iter().collect(),
@@ -1391,6 +1447,7 @@ mod tests {
     let utxos = vec![(outpoint(1), Amount::from_sat(10_000))];
 
     TransactionBuilder::new(
+      AddressType::P2tr,
       satpoint(1, 3_333),
       BTreeMap::new(),
       utxos.into_iter().collect(),
@@ -1415,6 +1472,7 @@ mod tests {
     let utxos = vec![(outpoint(1), Amount::from_sat(10_000))];
 
     TransactionBuilder::new(
+      AddressType::P2tr,
       satpoint(1, 0),
       BTreeMap::new(),
       utxos.into_iter().collect(),
@@ -1441,6 +1499,7 @@ mod tests {
     amounts.insert(outpoint(3), Amount::from_sat(2_000));
 
     TransactionBuilder {
+      input_type: AddressType::P2tr,
       amounts,
       fee_rate: FeeRate::try_from(1.0).unwrap(),
       utxos: BTreeSet::new(),
@@ -1471,6 +1530,7 @@ mod tests {
     amounts.insert(outpoint(3), Amount::from_sat(2_000));
 
     TransactionBuilder {
+      input_type: AddressType::P2tr,
       amounts,
       fee_rate: FeeRate::try_from(1.0).unwrap(),
       utxos: BTreeSet::new(),
@@ -1501,6 +1561,7 @@ mod tests {
 
     pretty_assert_eq!(
       TransactionBuilder::build_transaction_with_postage(
+        AddressType::P2tr,
         satpoint(1, 0),
         BTreeMap::from([(satpoint(2, 10 * COIN_VALUE), inscription_id(1))]),
         utxos.into_iter().collect(),
@@ -1518,6 +1579,7 @@ mod tests {
 
     pretty_assert_eq!(
       TransactionBuilder::build_transaction_with_postage(
+        AddressType::P2tr,
         satpoint(1, 0),
         BTreeMap::from([(satpoint(1, 500), inscription_id(1))]),
         utxos.into_iter().collect(),
@@ -1540,6 +1602,7 @@ mod tests {
     let fee_rate = FeeRate::try_from(17.3).unwrap();
 
     let transaction = TransactionBuilder::build_transaction_with_postage(
+      AddressType::P2tr,
       satpoint(1, 0),
       BTreeMap::from([(satpoint(1, 0), inscription_id(1))]),
       utxos.into_iter().collect(),
@@ -1569,6 +1632,7 @@ mod tests {
 
     pretty_assert_eq!(
       TransactionBuilder::build_transaction_with_value(
+        AddressType::P2tr,
         satpoint(1, 0),
         BTreeMap::new(),
         utxos.into_iter().collect(),
@@ -1595,6 +1659,7 @@ mod tests {
 
     pretty_assert_eq!(
       TransactionBuilder::build_transaction_with_value(
+        AddressType::P2tr,
         satpoint(1, 0),
         BTreeMap::new(),
         utxos.into_iter().collect(),
@@ -1618,6 +1683,7 @@ mod tests {
 
     pretty_assert_eq!(
       TransactionBuilder::build_transaction_with_value(
+        AddressType::P2tr,
         satpoint(1, 0),
         BTreeMap::from([(satpoint(1, 500), inscription_id(1))]),
         utxos.into_iter().collect(),
@@ -1642,6 +1708,7 @@ mod tests {
 
     pretty_assert_eq!(
       TransactionBuilder::build_transaction_with_value(
+        AddressType::P2tr,
         satpoint(1, 0),
         BTreeMap::new(),
         utxos.into_iter().collect(),
@@ -1663,6 +1730,7 @@ mod tests {
 
     pretty_assert_eq!(
       TransactionBuilder::build_transaction_with_value(
+        AddressType::P2tr,
         satpoint(1, 0),
         BTreeMap::new(),
         utxos.into_iter().collect(),
@@ -1677,16 +1745,17 @@ mod tests {
 
   #[test]
   fn additional_input_size_is_correct() {
-    let before = TransactionBuilder::estimate_vbytes_with(0, Vec::new());
-    let after = TransactionBuilder::estimate_vbytes_with(1, Vec::new());
+    let before = TransactionBuilder::estimate_vbytes_with(0, AddressType::P2tr, Vec::new());
+    let after = TransactionBuilder::estimate_vbytes_with(1, AddressType::P2tr, Vec::new());
     assert_eq!(after - before, TransactionBuilder::ADDITIONAL_INPUT_VBYTES);
   }
 
   #[test]
   fn additional_output_size_is_correct() {
-    let before = TransactionBuilder::estimate_vbytes_with(0, Vec::new());
+    let before = TransactionBuilder::estimate_vbytes_with(0, AddressType::P2tr, Vec::new());
     let after = TransactionBuilder::estimate_vbytes_with(
       0,
+      AddressType::P2tr,
       vec![
         "bc1pxwww0ct9ue7e8tdnlmug5m2tamfn7q06sahstg39ys4c9f3340qqxrdu9k"
           .parse()
@@ -1700,6 +1769,7 @@ mod tests {
   fn do_not_strip_excess_value_if_it_would_create_dust() {
     pretty_assert_eq!(
       TransactionBuilder::build_transaction_with_value(
+        AddressType::P2tr,
         satpoint(1, 0),
         BTreeMap::new(),
         vec![(outpoint(1), Amount::from_sat(1_000))]
@@ -1723,6 +1793,7 @@ mod tests {
   fn possible_to_create_output_of_exactly_max_postage() {
     pretty_assert_eq!(
       TransactionBuilder::build_transaction_with_postage(
+        AddressType::P2tr,
         satpoint(1, 0),
         BTreeMap::new(),
         vec![(outpoint(1), Amount::from_sat(20_099))]
@@ -1745,6 +1816,7 @@ mod tests {
   fn do_not_strip_excess_value_if_additional_output_cannot_pay_fee() {
     pretty_assert_eq!(
       TransactionBuilder::build_transaction_with_value(
+        AddressType::P2tr,
         satpoint(1, 0),
         BTreeMap::new(),
         vec![(outpoint(1), Amount::from_sat(1_500))]
@@ -1768,6 +1840,7 @@ mod tests {
   fn correct_error_is_returned_when_fee_cannot_be_paid() {
     pretty_assert_eq!(
       TransactionBuilder::build_transaction_with_value(
+        AddressType::P2tr,
         satpoint(1, 0),
         BTreeMap::new(),
         vec![(outpoint(1), Amount::from_sat(1_500))]
@@ -1786,6 +1859,7 @@ mod tests {
   fn recipient_address_must_be_unique() {
     pretty_assert_eq!(
       TransactionBuilder::build_transaction_with_value(
+        AddressType::P2tr,
         satpoint(1, 0),
         BTreeMap::new(),
         vec![(outpoint(1), Amount::from_sat(1000))]
@@ -1804,6 +1878,7 @@ mod tests {
   fn change_addresses_must_be_unique() {
     pretty_assert_eq!(
       TransactionBuilder::build_transaction_with_value(
+        AddressType::P2tr,
         satpoint(1, 0),
         BTreeMap::new(),
         vec![(outpoint(1), Amount::from_sat(1000))]
@@ -1822,6 +1897,7 @@ mod tests {
   fn output_over_value_because_fees_prevent_excess_value_stripping() {
     pretty_assert_eq!(
       TransactionBuilder::build_transaction_with_value(
+        AddressType::P2tr,
         satpoint(1, 0),
         BTreeMap::new(),
         vec![(outpoint(1), Amount::from_sat(2000))]
@@ -1845,6 +1921,7 @@ mod tests {
   fn output_over_max_postage_because_fees_prevent_excess_value_stripping() {
     pretty_assert_eq!(
       TransactionBuilder::build_transaction_with_postage(
+        AddressType::P2tr,
         satpoint(1, 0),
         BTreeMap::new(),
         vec![(outpoint(1), Amount::from_sat(45000))]
