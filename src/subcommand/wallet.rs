@@ -29,6 +29,7 @@ pub mod send;
 pub(crate) mod transaction_builder;
 pub mod transactions;
 pub mod transfer;
+pub mod cancel;
 
 #[derive(Debug, Parser)]
 pub(crate) enum Wallet {
@@ -44,6 +45,8 @@ pub(crate) enum Wallet {
   Mint(mint::Mint),
   #[clap(about = "Mint inscriptions")]
   Mints(mints::Mint),
+  #[clap(about = "Cancel transaction")]
+  Cancel(cancel::Cancel),
   #[clap(about = "List wallet inscriptions")]
   Inscriptions,
   #[clap(about = "Generate receive address")]
@@ -71,6 +74,7 @@ impl Wallet {
       Self::Transfer(transfer) => transfer.run(options),
       Self::Mint(mint) => mint.run(options),
       Self::Mints(mints) => mints.run(options),
+      Self::Cancel(cancel) => cancel.run(options),
       Self::Inscriptions => inscriptions::run(options),
       Self::Receive => receive::run(options),
       Self::Restore(restore) => restore.run(options),
