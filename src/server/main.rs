@@ -21,9 +21,9 @@ use std::str::FromStr;
 use std::sync::Arc;
 use tokio::task;
 
-#[derive(Clone, PartialEq, Eq, Debug, Deserialize, Serialize)]
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
 struct MintParam {
-  fee_rate: u64,
+  fee_rate: f64,
   source: Address,
   content: String,
   destination: Option<Address>,
@@ -31,7 +31,7 @@ struct MintParam {
   repeat: Option<u64>,
 }
 
-#[derive(Clone, PartialEq, Eq, Debug, Deserialize, Serialize)]
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
 struct MintData {
   jsonrpc: Option<String>,
   id: Option<u32>,
@@ -39,18 +39,18 @@ struct MintData {
   params: MintParam,
 }
 
-#[derive(Clone, PartialEq, Eq, Debug, Deserialize, Serialize)]
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
 struct TransferParam {
   source: Address,
   destination: Address,
   outgoing: String,
-  fee_rate: u64,
+  fee_rate: f64,
   op_return: String,
   brc20_transfer: bool,
   addition_outgoing: Vec<String>,
 }
 
-#[derive(Clone, PartialEq, Eq, Debug, Deserialize, Serialize)]
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
 struct TransferData {
   jsonrpc: Option<String>,
   id: Option<u32>,
@@ -58,19 +58,19 @@ struct TransferData {
   params: TransferParam,
 }
 
-#[derive(Clone, PartialEq, Eq, Debug, Deserialize, Serialize)]
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
 struct TransferWithFeeParam {
   source: Address,
   destination: Address,
   outgoing: String,
-  fee_rate: u64,
+  fee_rate: f64,
   op_return: String,
   brc20_transfer: bool,
   addition_outgoing: Vec<String>,
   addition_fee: u64,
 }
 
-#[derive(Clone, PartialEq, Eq, Debug, Deserialize, Serialize)]
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
 struct TransferWithFeeData {
   jsonrpc: Option<String>,
   id: Option<u32>,
@@ -78,16 +78,16 @@ struct TransferWithFeeData {
   params: TransferWithFeeParam,
 }
 
-#[derive(Clone, PartialEq, Eq, Debug, Deserialize, Serialize)]
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
 struct MintsParam {
-  fee_rate: u64,
+  fee_rate: f64,
   source: Address,
   content: Vec<String>,
   destination: Option<Address>,
   extension: Option<String>,
 }
 
-#[derive(Clone, PartialEq, Eq, Debug, Deserialize, Serialize)]
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
 struct MintsData {
   jsonrpc: Option<String>,
   id: Option<u32>,
@@ -95,14 +95,14 @@ struct MintsData {
   params: MintsParam,
 }
 
-#[derive(Clone, PartialEq, Eq, Debug, Deserialize, Serialize)]
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
 struct CancelParam {
-  fee_rate: u64,
+  fee_rate: f64,
   source: Address,
   inputs: Vec<String>,
 }
 
-#[derive(Clone, PartialEq, Eq, Debug, Deserialize, Serialize)]
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
 struct CancelData {
   jsonrpc: Option<String>,
   id: Option<u32>,
@@ -154,7 +154,7 @@ async fn _handle_request(
       match form_data.method.as_str() {
         "mint" => {
           let mint = Mint {
-            fee_rate: FeeRate::from(form_data.params.fee_rate),
+            fee_rate: FeeRate::try_from(form_data.params.fee_rate)?,
             destination: form_data.params.destination,
             source,
             extension: form_data.params.extension,
@@ -196,7 +196,7 @@ async fn _handle_request(
       match form_data.method.as_str() {
         "mints" => {
           let mint = mints::Mint {
-            fee_rate: FeeRate::from(form_data.params.fee_rate),
+            fee_rate: FeeRate::try_from(form_data.params.fee_rate)?,
             destination: form_data.params.destination,
             source,
             extension: form_data.params.extension,
@@ -244,7 +244,7 @@ async fn _handle_request(
           }
           let addition_fee = Amount::from_sat(0);
           let transfer = Transfer {
-            fee_rate: FeeRate::from(form_data.params.fee_rate),
+            fee_rate: FeeRate::try_from(form_data.params.fee_rate)?,
             destination,
             source,
             outgoing: Outgoing::from_str(&form_data.params.outgoing)?,
@@ -294,7 +294,7 @@ async fn _handle_request(
           }
           let addition_fee = Amount::from_sat(form_data.params.addition_fee);
           let transfer = Transfer {
-            fee_rate: FeeRate::from(form_data.params.fee_rate),
+            fee_rate: FeeRate::try_from(form_data.params.fee_rate)?,
             destination,
             source,
             outgoing: Outgoing::from_str(&form_data.params.outgoing)?,
@@ -337,7 +337,7 @@ async fn _handle_request(
       match form_data.method.as_str() {
         "cancel" => {
           let cancel = Cancel {
-            fee_rate: FeeRate::from(form_data.params.fee_rate),
+            fee_rate: FeeRate::try_from(form_data.params.fee_rate)?,
             source,
             inputs,
           };
