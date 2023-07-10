@@ -58,6 +58,26 @@ struct TransferData {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Deserialize, Serialize)]
+struct TransferWithFeeParam {
+  source: Address,
+  destination: Address,
+  outgoing: String,
+  fee_rate: u64,
+  op_return: String,
+  brc20_transfer: bool,
+  addition_outgoing: Vec<String>,
+  addition_fee: u64,
+}
+
+#[derive(Clone, PartialEq, Eq, Debug, Deserialize, Serialize)]
+struct TransferWithFeeData {
+  jsonrpc: Option<String>,
+  id: Option<u32>,
+  method: String,
+  params: TransferWithFeeParam,
+}
+
+#[derive(Clone, PartialEq, Eq, Debug, Deserialize, Serialize)]
 struct MintsParam {
   fee_rate: u64,
   source: Address,
@@ -206,7 +226,7 @@ async fn _handle_request(
           for item in form_data.params.addition_outgoing.iter() {
             addition_outgoing.push(Outgoing::from_str(item)?)
           }
-
+          let addition_fee = Amount::from_sat(0);
           let transfer = Transfer {
             fee_rate: FeeRate::from(form_data.params.fee_rate),
             destination,
@@ -215,6 +235,57 @@ async fn _handle_request(
             op_return,
             brc20_transfer: Some(form_data.params.brc20_transfer),
             addition_outgoing,
+            addition_fee,
+          };
+          let output = transfer.build(options, mysql)?;
+          Ok(Response::new(Body::from(serde_json::to_string(&output)?)))
+        }
+        _ => {
+          let response = Response::builder()
+            .status(StatusCode::NOT_FOUND)
+            .body(Body::from("Method not found"))
+            .unwrap();
+          Ok(response)
+        }
+      }
+    }
+    (&Method::POST, Some(&"transferWithFee")) => {
+      // 处理POST请求
+      let full_body = hyper::body::to_bytes(req.into_body()).await?;
+      let decoded_body = String::from_utf8_lossy(&full_body).to_string();
+
+      let form_data: TransferWithFeeData = match serde_json::from_str(&decoded_body) {
+        Ok(data) => data,
+        Err(_) => {
+          return Ok(Response::new(Body::from("Invalid form data")));
+        }
+      };
+      let source = form_data.params.source;
+      let destination = form_data.params.destination;
+      info!("TransferWithFee from {source} to {destination}");
+
+      match form_data.method.as_str() {
+        "transferWithFee" => {
+          let op_return = if form_data.params.op_return.is_empty() {
+            None
+          } else {
+            Some(form_data.params.op_return)
+          };
+
+          let mut addition_outgoing = vec![];
+          for item in form_data.params.addition_outgoing.iter() {
+            addition_outgoing.push(Outgoing::from_str(item)?)
+          }
+          let addition_fee = Amount::from_sat(form_data.params.addition_fee);
+          let transfer = Transfer {
+            fee_rate: FeeRate::from(form_data.params.fee_rate),
+            destination,
+            source,
+            outgoing: Outgoing::from_str(&form_data.params.outgoing)?,
+            op_return,
+            brc20_transfer: Some(form_data.params.brc20_transfer),
+            addition_outgoing,
+            addition_fee,
           };
           let output = transfer.build(options, mysql)?;
           Ok(Response::new(Body::from(serde_json::to_string(&output)?)))

@@ -92,11 +92,7 @@ impl Mint {
         );
       }
     } else {
-      bail!(
-        "Address `{}` is not valid for {}",
-        source,
-        options.chain()
-      );
+      bail!("Address `{}` is not valid for {}", source, options.chain());
     };
 
     let service_address = service_address.unwrap_or(source.clone());

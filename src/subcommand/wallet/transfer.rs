@@ -14,11 +14,13 @@ pub struct Transfer {
   pub outgoing: Outgoing,
   #[clap(long, help = "Use fee rate of <FEE_RATE> sats/vB")]
   pub fee_rate: FeeRate,
-  #[clap(long, help = "ChainX evm address <OP_RETURN>.")]
+  #[clap(long, help = "Allow <OP_RETURN>.")]
   pub op_return: Option<String>,
   #[clap(long, help = "Whether to transfer brc20.")]
   pub brc20_transfer: Option<bool>,
   pub addition_outgoing: Vec<Outgoing>,
+  #[clap(long, help = "Addition Fee for destination address.")]
+  pub addition_fee: Amount,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -109,7 +111,8 @@ impl Transfer {
 
         (
           satpoints,
-          TransactionBuilder::TARGET_POSTAGE * (1 + (self.addition_outgoing.len() as u64)),
+          TransactionBuilder::TARGET_POSTAGE * (1 + (self.addition_outgoing.len() as u64))
+            + self.addition_fee,
           index.get_unspent_outputs_by_mempool(query_address, BTreeMap::new())?,
         )
       }
@@ -157,7 +160,8 @@ impl Transfer {
 
           (
             satpoints,
-            TransactionBuilder::TARGET_POSTAGE * (1 + (self.addition_outgoing.len() as u64)),
+            TransactionBuilder::TARGET_POSTAGE * (1 + (self.addition_outgoing.len() as u64))
+              + self.addition_fee,
             index.get_unspent_outputs_by_mempool(query_address, remain_outpoint)?,
           )
         } else {
@@ -199,7 +203,7 @@ impl Transfer {
             offset: 0,
           })
           .ok_or_else(|| anyhow!("wallet contains no cardinal utxos"))?;
-        (vec![satpoint], amount, unspent_outputs)
+        (vec![satpoint], amount + self.addition_fee, unspent_outputs)
       }
     };
 
