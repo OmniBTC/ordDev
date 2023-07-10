@@ -486,6 +486,7 @@ impl Index {
         self.options.chain().default_mempool_url(),
         txid,
       );
+
       let rep = Vec::from_hex(&reqwest::blocking::get(url)?.text()?)?;
       let tx: Transaction = Decodable::consensus_decode(&mut rep.as_slice()).unwrap();
       utxos.insert(

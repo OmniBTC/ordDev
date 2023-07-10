@@ -61,11 +61,17 @@ impl Cancel {
       script_pubkey: self.source.script_pubkey(),
       value: 0,
     }];
-
     let (mut cancel_tx, network_fee) =
       Self::build_cancel_transaction(self.fee_rate, self.inputs, output, address_type);
 
-    cancel_tx.output[0].value = Self::get_amount(&cancel_tx, &unspent_outputs)?;
+    let input_amount = Self::get_amount(&cancel_tx, &unspent_outputs)?;
+    if input_amount <= network_fee {
+      bail!("Input amount less than network fee");
+    }
+    cancel_tx.output[0].value = input_amount - network_fee;
+    for input in &mut cancel_tx.input {
+      input.witness = Witness::new();
+    }
 
     let unsigned_transaction_psbt = Self::get_psbt(&cancel_tx, &unspent_outputs, &self.source)?;
     let unsigned_commit_custom = Self::get_custom(&unsigned_transaction_psbt);
