@@ -15,6 +15,7 @@ use {
 };
 
 pub mod balance;
+pub mod cancel;
 pub mod cardinals;
 pub mod create;
 pub(crate) mod inscribe;
@@ -29,7 +30,6 @@ pub mod send;
 pub(crate) mod transaction_builder;
 pub mod transactions;
 pub mod transfer;
-pub mod cancel;
 
 #[derive(Debug, Parser)]
 pub(crate) enum Wallet {

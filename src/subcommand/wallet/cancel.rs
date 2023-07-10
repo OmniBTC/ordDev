@@ -1,9 +1,9 @@
 use super::*;
 use crate::index::{ConstructTransaction, MysqlDatabase, TransactionOutputArray};
+use bitcoin::blockdata::{script, witness::Witness};
 use bitcoin::consensus::encode::serialize_hex;
 use bitcoin::psbt::Psbt;
 use bitcoin::{AddressType, PackedLockTime};
-use bitcoin::blockdata::{script, witness::Witness};
 
 #[derive(Debug, Parser)]
 pub struct Cancel {
@@ -62,12 +62,12 @@ impl Cancel {
       value: 0,
     }];
 
-    let (mut cancel_tx, network_fee) = Self::build_cancel_transaction(self.fee_rate, self.inputs, output, address_type);
+    let (mut cancel_tx, network_fee) =
+      Self::build_cancel_transaction(self.fee_rate, self.inputs, output, address_type);
 
     cancel_tx.output[0].value = Self::get_amount(&cancel_tx, &unspent_outputs)?;
 
-    let unsigned_transaction_psbt =
-      Self::get_psbt(&cancel_tx, &unspent_outputs, &self.source)?;
+    let unsigned_transaction_psbt = Self::get_psbt(&cancel_tx, &unspent_outputs, &self.source)?;
     let unsigned_commit_custom = Self::get_custom(&unsigned_transaction_psbt);
 
     log::info!("Build cancel success");
@@ -84,10 +84,7 @@ impl Cancel {
     Ok(())
   }
 
-  fn get_amount(
-    tx: &Transaction,
-    utxos: &BTreeMap<OutPoint, Amount>,
-  ) -> Result<u64> {
+  fn get_amount(tx: &Transaction, utxos: &BTreeMap<OutPoint, Amount>) -> Result<u64> {
     let mut amount = 0;
     for i in 0..tx.input.len() {
       amount += utxos
@@ -150,13 +147,15 @@ impl Cancel {
     };
 
     let cancel_tx = Transaction {
-      input:
-        input.iter().map(|item| TxIn {
+      input: input
+        .iter()
+        .map(|item| TxIn {
           previous_output: *item,
           script_sig: script::Builder::new().into_script(),
           witness: Witness::from_vec(vec![vec![0; witness_size]]),
           sequence: Sequence::ENABLE_RBF_NO_LOCKTIME,
-        }).collect(),
+        })
+        .collect(),
       output,
       lock_time: PackedLockTime::ZERO,
       version: 1,

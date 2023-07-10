@@ -1,5 +1,5 @@
 use anyhow::{anyhow, Error};
-use bitcoin::{Address, Amount, Network};
+use bitcoin::{Address, Amount, Network, OutPoint};
 use clap::{Arg, Command};
 use hyper::server::Server;
 use hyper::service::{make_service_fn, service_fn};
@@ -9,6 +9,7 @@ use ord::chain::Chain;
 use ord::index::MysqlDatabase;
 use ord::options::Options;
 use ord::outgoing::Outgoing;
+use ord::subcommand::wallet::cancel::Cancel;
 use ord::subcommand::wallet::mint::Mint;
 use ord::subcommand::wallet::mints;
 use ord::subcommand::wallet::transfer::Transfer;
@@ -92,6 +93,21 @@ struct MintsData {
   id: Option<u32>,
   method: String,
   params: MintsParam,
+}
+
+#[derive(Clone, PartialEq, Eq, Debug, Deserialize, Serialize)]
+struct CancelParam {
+  fee_rate: u64,
+  source: Address,
+  inputs: Vec<String>,
+}
+
+#[derive(Clone, PartialEq, Eq, Debug, Deserialize, Serialize)]
+struct CancelData {
+  jsonrpc: Option<String>,
+  id: Option<u32>,
+  method: String,
+  params: CancelParam,
 }
 
 async fn _handle_request(
@@ -288,6 +304,44 @@ async fn _handle_request(
             addition_fee,
           };
           let output = transfer.build(options, mysql)?;
+          Ok(Response::new(Body::from(serde_json::to_string(&output)?)))
+        }
+        _ => {
+          let response = Response::builder()
+            .status(StatusCode::NOT_FOUND)
+            .body(Body::from("Method not found"))
+            .unwrap();
+          Ok(response)
+        }
+      }
+    }
+    (&Method::POST, Some(&"cancel")) => {
+      // 处理POST请求
+      let full_body = hyper::body::to_bytes(req.into_body()).await?;
+      let decoded_body = String::from_utf8_lossy(&full_body).to_string();
+
+      let form_data: CancelData = match serde_json::from_str(&decoded_body) {
+        Ok(data) => data,
+        Err(_) => {
+          return Ok(Response::new(Body::from("Invalid form data")));
+        }
+      };
+      let source = form_data.params.source;
+      info!("Cancel from {source}");
+
+      let mut inputs: Vec<OutPoint> = vec![];
+      for item in &form_data.params.inputs {
+        inputs.push(OutPoint::from_str(item)?);
+      }
+
+      match form_data.method.as_str() {
+        "cancel" => {
+          let cancel = Cancel {
+            fee_rate: FeeRate::from(form_data.params.fee_rate),
+            source,
+            inputs,
+          };
+          let output = cancel.build(options, mysql)?;
           Ok(Response::new(Body::from(serde_json::to_string(&output)?)))
         }
         _ => {
