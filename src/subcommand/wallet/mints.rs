@@ -41,6 +41,8 @@ pub struct Mint {
   pub extension: Option<String>,
   #[clap(long, help = "Content of mint.")]
   pub content: Vec<String>,
+  #[clap(long, help = "Target postage.")]
+  pub target_postage: Amount,
 }
 
 impl Mint {
@@ -140,6 +142,7 @@ impl Mint {
       false,
       service_address,
       service_fee,
+      self.target_postage,
     )?;
 
     let network_fee = Self::calculate_fee(&unsigned_commit_tx, &utxos) + network_fee;
@@ -231,6 +234,7 @@ impl Mint {
     no_limit: bool,
     service_address: Address,
     service_fee: Amount,
+    target_postage: Amount,
   ) -> Result<(
     Transaction,
     Vec<Transaction>,
@@ -379,7 +383,7 @@ impl Mint {
       change,
       commit_fee_rate,
       reveal_fees.clone().into_iter().sum::<Amount>()
-        + TransactionBuilder::TARGET_POSTAGE * (repeat as u64)
+        + target_postage * (repeat as u64)
         + service_fee,
     )?;
 
@@ -392,14 +396,14 @@ impl Mint {
 
     let mut reveal_txs: Vec<Transaction> = vec![];
 
-    let satpoint_fee = (TransactionBuilder::TARGET_POSTAGE * (repeat as u64)).to_sat();
+    let satpoint_fee = (target_postage * (repeat as u64)).to_sat();
     let network_fee = reveal_fees.clone().into_iter().sum::<Amount>().to_sat();
     let service_fee = service_fee.to_sat();
     for i in 0..repeat {
       let reveal_output = if i == 0 && repeat == 1 {
         let mut tx_out = vec![TxOut {
           script_pubkey: destination.script_pubkey(),
-          value: TransactionBuilder::TARGET_POSTAGE.to_sat(),
+          value: target_postage.to_sat(),
         }];
         if service_fee > 0 {
           tx_out.push(TxOut {
@@ -411,12 +415,12 @@ impl Mint {
       } else if i == 0 && repeat > 1 {
         let mut tx_out = vec![TxOut {
           script_pubkey: destination.script_pubkey(),
-          value: TransactionBuilder::TARGET_POSTAGE.to_sat(),
+          value: target_postage.to_sat(),
         }];
         for (j, fee) in reveal_fees.iter().take(repeat).skip(1).enumerate() {
           tx_out.push(TxOut {
             script_pubkey: commit_tx_address[j + 1].script_pubkey(),
-            value: (*fee + TransactionBuilder::TARGET_POSTAGE).to_sat(),
+            value: (*fee + target_postage).to_sat(),
           })
         }
         if service_fee > 0 {
@@ -429,7 +433,7 @@ impl Mint {
       } else {
         vec![TxOut {
           script_pubkey: destination.script_pubkey(),
-          value: TransactionBuilder::TARGET_POSTAGE.to_sat(),
+          value: target_postage.to_sat(),
         }]
       };
 

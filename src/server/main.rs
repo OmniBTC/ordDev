@@ -13,7 +13,7 @@ use ord::subcommand::wallet::cancel::Cancel;
 use ord::subcommand::wallet::mint::Mint;
 use ord::subcommand::wallet::mints;
 use ord::subcommand::wallet::transfer::Transfer;
-use ord::FeeRate;
+use ord::{FeeRate, TransactionBuilder};
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 use std::path::PathBuf;
@@ -110,6 +110,43 @@ struct CancelData {
   params: CancelParam,
 }
 
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
+struct MintWithPostageParam {
+  fee_rate: f64,
+  source: Address,
+  content: String,
+  destination: Option<Address>,
+  extension: Option<String>,
+  repeat: Option<u64>,
+  target_postage: u64,
+}
+
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
+struct MintWithPostageData {
+  jsonrpc: Option<String>,
+  id: Option<u32>,
+  method: String,
+  params: MintWithPostageParam,
+}
+
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
+struct MintsWithPostageParam {
+  fee_rate: f64,
+  source: Address,
+  content: Vec<String>,
+  destination: Option<Address>,
+  extension: Option<String>,
+  target_postage: u64,
+}
+
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
+struct MintsWithPostageData {
+  jsonrpc: Option<String>,
+  id: Option<u32>,
+  method: String,
+  params: MintsWithPostageParam,
+}
+
 async fn _handle_request(
   options: Options,
   service_address: Address,
@@ -160,6 +197,7 @@ async fn _handle_request(
             extension: form_data.params.extension,
             content: form_data.params.content,
             repeat: form_data.params.repeat,
+            target_postage: TransactionBuilder::TARGET_POSTAGE,
           };
 
           let output = mint.build(options, Some(service_address), service_fee, mysql)?;
@@ -201,6 +239,7 @@ async fn _handle_request(
             source,
             extension: form_data.params.extension,
             content: form_data.params.content,
+            target_postage: TransactionBuilder::TARGET_POSTAGE,
           };
 
           let output = mint.build(options, Some(service_address), service_fee, mysql)?;
@@ -342,6 +381,91 @@ async fn _handle_request(
             inputs,
           };
           let output = cancel.build(options, mysql)?;
+          Ok(Response::new(Body::from(serde_json::to_string(&output)?)))
+        }
+        _ => {
+          let response = Response::builder()
+            .status(StatusCode::NOT_FOUND)
+            .body(Body::from("Method not found"))
+            .unwrap();
+          Ok(response)
+        }
+      }
+    }
+    (&Method::POST, Some(&"mintWithPostage")) => {
+      // 处理POST请求
+      let full_body = hyper::body::to_bytes(req.into_body()).await?;
+      let decoded_body = String::from_utf8_lossy(&full_body).to_string();
+
+      let form_data: MintWithPostageData = match serde_json::from_str(&decoded_body) {
+        Ok(data) => data,
+        Err(_) => {
+          return Ok(Response::new(Body::from("Invalid form data")));
+        }
+      };
+      let source = form_data.params.source;
+      let destination = form_data
+        .params
+        .destination
+        .clone()
+        .unwrap_or(source.clone());
+      info!("MintWithPostage from {source} to {destination}");
+
+      match form_data.method.as_str() {
+        "mintWithPostage" => {
+          let mint = Mint {
+            fee_rate: FeeRate::try_from(form_data.params.fee_rate)?,
+            destination: form_data.params.destination,
+            source,
+            extension: form_data.params.extension,
+            content: form_data.params.content,
+            repeat: form_data.params.repeat,
+            target_postage: Amount::from_sat(form_data.params.target_postage),
+          };
+
+          let output = mint.build(options, Some(service_address), service_fee, mysql)?;
+          Ok(Response::new(Body::from(serde_json::to_string(&output)?)))
+        }
+        _ => {
+          let response = Response::builder()
+            .status(StatusCode::NOT_FOUND)
+            .body(Body::from("Method not found"))
+            .unwrap();
+          Ok(response)
+        }
+      }
+    }
+    (&Method::POST, Some(&"mintsWithPostage")) => {
+      // 处理POST请求
+      let full_body = hyper::body::to_bytes(req.into_body()).await?;
+      let decoded_body = String::from_utf8_lossy(&full_body).to_string();
+
+      let form_data: MintsWithPostageData = match serde_json::from_str(&decoded_body) {
+        Ok(data) => data,
+        Err(_) => {
+          return Ok(Response::new(Body::from("Invalid form data")));
+        }
+      };
+      let source = form_data.params.source;
+      let destination = form_data
+        .params
+        .destination
+        .clone()
+        .unwrap_or(source.clone());
+      info!("MintsWithPostage from {source} to {destination}");
+
+      match form_data.method.as_str() {
+        "mintsWithPostage" => {
+          let mint = mints::Mint {
+            fee_rate: FeeRate::try_from(form_data.params.fee_rate)?,
+            destination: form_data.params.destination,
+            source,
+            extension: form_data.params.extension,
+            content: form_data.params.content,
+            target_postage: Amount::from_sat(form_data.params.target_postage),
+          };
+
+          let output = mint.build(options, Some(service_address), service_fee, mysql)?;
           Ok(Response::new(Body::from(serde_json::to_string(&output)?)))
         }
         _ => {

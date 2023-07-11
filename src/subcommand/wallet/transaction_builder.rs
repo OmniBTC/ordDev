@@ -121,7 +121,7 @@ impl TransactionBuilder {
   const MAX_POSTAGE: Amount = Amount::from_sat(2 * 10_000);
   pub(crate) const SCHNORR_SIGNATURE_SIZE: usize = 64;
   pub(crate) const P2WPKH_WINETSS_SIZE: usize = 108;
-  pub(crate) const TARGET_POSTAGE: Amount = Amount::from_sat(546);
+  pub const TARGET_POSTAGE: Amount = Amount::from_sat(546);
 
   pub fn build_transaction_with_postage(
     input_type: AddressType,
