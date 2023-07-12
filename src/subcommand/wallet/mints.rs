@@ -121,6 +121,7 @@ impl Mint {
       service_fee.unwrap_or(Self::SERVICE_FEE)
     };
 
+    let reveal_fee_rate = FeeRate::try_from(self.fee_rate.0 + 0.02)?;
     let (
       unsigned_commit_tx,
       reveal_txs,
@@ -138,7 +139,7 @@ impl Mint {
       commit_tx_change,
       reveal_tx_destination,
       self.fee_rate,
-      self.fee_rate,
+      reveal_fee_rate,
       false,
       service_address,
       service_fee,
