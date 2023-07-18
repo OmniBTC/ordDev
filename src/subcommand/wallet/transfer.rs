@@ -113,7 +113,7 @@ impl Transfer {
           satpoints,
           TransactionBuilder::TARGET_POSTAGE * (1 + (self.addition_outgoing.len() as u64))
             + self.addition_fee,
-          index.get_unspent_outputs_by_mempool(query_address, BTreeMap::new())?,
+          index.get_unspent_outputs_by_mempool_v1(query_address, BTreeMap::new())?,
         )
       }
       Outgoing::InscriptionId(id) => {
@@ -162,7 +162,7 @@ impl Transfer {
             satpoints,
             TransactionBuilder::TARGET_POSTAGE * (1 + (self.addition_outgoing.len() as u64))
               + self.addition_fee,
-            index.get_unspent_outputs_by_mempool(query_address, remain_outpoint)?,
+            index.get_unspent_outputs_by_mempool_v1(query_address, remain_outpoint)?,
           )
         } else {
           let satpoint = index
@@ -184,7 +184,7 @@ impl Transfer {
           (
             satpoints,
             TransactionBuilder::TARGET_POSTAGE * (1 + (self.addition_outgoing.len() as u64)),
-            index.get_unspent_outputs_by_mempool(query_address, BTreeMap::new())?,
+            index.get_unspent_outputs_by_mempool_v1(query_address, BTreeMap::new())?,
           )
         }
       }
@@ -194,7 +194,7 @@ impl Transfer {
           .map(|satpoint| satpoint.outpoint)
           .collect::<BTreeSet<OutPoint>>();
         let unspent_outputs =
-          index.get_unspent_outputs_by_mempool(query_address, BTreeMap::new())?;
+          index.get_unspent_outputs_by_mempool_v1(query_address, BTreeMap::new())?;
         let satpoint = unspent_outputs
           .keys()
           .find(|outpoint| !inscribed_utxos.contains(outpoint))

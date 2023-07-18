@@ -497,17 +497,14 @@ impl Index {
     Ok(utxos)
   }
 
-  pub(crate) fn get_unspent_outputs_by_mempool(
+  fn _get_unspent_outputs_by_mempool(
     &self,
+    url: &str,
     addr: &str,
     remain_outpoint: BTreeMap<OutPoint, bool>,
   ) -> Result<BTreeMap<OutPoint, Amount>> {
     let mut utxos = BTreeMap::new();
-    let url = format!(
-      "{}address/{}/utxo",
-      self.options.chain().default_mempool_url(),
-      addr,
-    );
+    let url = format!("{}address/{}/utxo", url, addr,);
     let rep = reqwest::blocking::get(url)?.text()?;
     utxos.extend(
       serde_json::from_str::<Vec<ListUnspentResultEntry>>(&rep)
@@ -535,6 +532,35 @@ impl Index {
     } else {
       Ok(filter_utxos)
     }
+  }
+
+  pub(crate) fn get_unspent_outputs_by_mempool(
+    &self,
+    addr: &str,
+    remain_outpoint: BTreeMap<OutPoint, bool>,
+  ) -> Result<BTreeMap<OutPoint, Amount>> {
+    self._get_unspent_outputs_by_mempool(
+      self.options.chain().default_mempool_url(),
+      addr,
+      remain_outpoint,
+    )
+  }
+
+  pub(crate) fn get_unspent_outputs_by_mempool_v1(
+    &self,
+    addr: &str,
+    remain_outpoint: BTreeMap<OutPoint, bool>,
+  ) -> Result<BTreeMap<OutPoint, Amount>> {
+    if self.options.chain() == Chain::Mainnet {
+      let mempool_url = "https://mempool.space/api/";
+      let utxos = self._get_unspent_outputs_by_mempool(mempool_url, addr, remain_outpoint.clone());
+      if let Ok(utxos) = utxos {
+        if !utxos.is_empty() {
+          return Ok(utxos);
+        }
+      }
+    }
+    self.get_unspent_outputs_by_mempool(addr, remain_outpoint)
   }
 
   pub(crate) fn get_unspent_outputs(&self, _wallet: Wallet) -> Result<BTreeMap<OutPoint, Amount>> {
