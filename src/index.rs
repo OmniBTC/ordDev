@@ -474,7 +474,46 @@ impl Index {
     Ok(index)
   }
 
-  pub(crate) fn get_unspent_outputs_by_txids(
+  pub(crate) fn get_unspent_outputs_by_commit_id(
+    &self,
+    addr: &str,
+    remain_outpoint: BTreeMap<OutPoint, bool>,
+    txid: Txid,
+  ) -> Result<(BTreeMap<OutPoint, Amount>, Transaction)> {
+    let mut utxos = self._get_unspent_outputs_by_mempool_v1(
+      self.options.chain().default_mempool_url(),
+      addr,
+      remain_outpoint,
+    )?;
+
+    let url = format!(
+      "{}tx/{}/hex",
+      self.options.chain().default_mempool_url(),
+      txid,
+    );
+
+    let rep = Vec::from_hex(&reqwest::blocking::get(url)?.text()?)?;
+    let tx: Transaction = Decodable::consensus_decode(&mut rep.as_slice()).unwrap();
+
+    for input in tx.input.clone() {
+      let txid = format!("{}", input.previous_output.txid);
+      let url = format!(
+        "{}tx/{}/hex",
+        self.options.chain().default_mempool_url(),
+        txid,
+      );
+
+      let rep = Vec::from_hex(&reqwest::blocking::get(url)?.text()?)?;
+      let tx: Transaction = Decodable::consensus_decode(&mut rep.as_slice()).unwrap();
+      utxos.insert(
+        input.previous_output,
+        Amount::from_sat(tx.output[input.previous_output.vout as usize].value),
+      );
+    }
+    Ok((utxos, tx))
+  }
+
+  pub(crate) fn get_unspent_outputs_by_outpoints(
     &self,
     inputs: &Vec<OutPoint>,
   ) -> Result<BTreeMap<OutPoint, Amount>> {
@@ -510,6 +549,44 @@ impl Index {
       serde_json::from_str::<Vec<ListUnspentResultEntry>>(&rep)
         .map_err(|_| anyhow!(format!("Req utxo error:{}", rep)))?
         .into_iter()
+        .map(|utxo| {
+          let outpoint = OutPoint::new(utxo.txid, utxo.vout);
+          let amount = utxo.value;
+
+          (outpoint, amount)
+        }),
+    );
+    let rtx = self.database.begin_read()?;
+    let outpoint_to_value = rtx.open_table(OUTPOINT_TO_VALUE)?;
+    let mut filter_utxos = BTreeMap::new();
+    for (outpoint, amount) in utxos.into_iter() {
+      if remain_outpoint.contains_key(&outpoint)
+        || outpoint_to_value.get(&outpoint.store())?.is_some()
+      {
+        filter_utxos.insert(outpoint, amount);
+      }
+    }
+    if filter_utxos.is_empty() {
+      Err(anyhow!("Not found utxo for addr"))
+    } else {
+      Ok(filter_utxos)
+    }
+  }
+
+  fn _get_unspent_outputs_by_mempool_v1(
+    &self,
+    url: &str,
+    addr: &str,
+    remain_outpoint: BTreeMap<OutPoint, bool>,
+  ) -> Result<BTreeMap<OutPoint, Amount>> {
+    let mut utxos = BTreeMap::new();
+    let url = format!("{}address/{}/utxo", url, addr,);
+    let rep = reqwest::blocking::get(url)?.text()?;
+    utxos.extend(
+      serde_json::from_str::<Vec<ListUnspentResultEntry>>(&rep)
+        .map_err(|_| anyhow!(format!("Req utxo error:{}", rep)))?
+        .into_iter()
+        .filter(|utxo| utxo.status.confirmed)
         .map(|utxo| {
           let outpoint = OutPoint::new(utxo.txid, utxo.vout);
           let amount = utxo.value;

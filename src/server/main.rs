@@ -1,5 +1,5 @@
 use anyhow::{anyhow, Error};
-use bitcoin::{Address, Amount, Network, OutPoint};
+use bitcoin::{Address, Amount, Network, OutPoint, Txid};
 use clap::{Arg, Command};
 use hyper::server::Server;
 use hyper::service::{make_service_fn, service_fn};
@@ -147,6 +147,53 @@ struct MintsWithPostageData {
   params: MintsWithPostageParam,
 }
 
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
+struct ReMintParam {
+  fee_rate: f64,
+  source: Address,
+  content: String,
+  destination: Option<Address>,
+  extension: Option<String>,
+  repeat: Option<u64>,
+  target_postage: u64,
+  remint: String,
+}
+
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
+struct ReMintData {
+  jsonrpc: Option<String>,
+  id: Option<u32>,
+  method: String,
+  params: ReMintParam,
+}
+
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
+struct ReMintsParam {
+  fee_rate: f64,
+  source: Address,
+  content: Vec<String>,
+  destination: Option<Address>,
+  extension: Option<String>,
+  target_postage: u64,
+  remint: String,
+}
+
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
+struct ReMintsData {
+  jsonrpc: Option<String>,
+  id: Option<u32>,
+  method: String,
+  params: ReMintsParam,
+}
+
+fn add_fee(service_fee: Option<Amount>, add: u64) -> Option<Amount> {
+  if let Some(fee) = service_fee {
+    Some(fee + Amount::from_sat(add))
+  } else {
+    Some(Amount::from_sat(add))
+  }
+}
+
 async fn _handle_request(
   options: Options,
   service_address: Address,
@@ -198,6 +245,7 @@ async fn _handle_request(
             content: form_data.params.content,
             repeat: form_data.params.repeat,
             target_postage: TransactionBuilder::TARGET_POSTAGE,
+            remint: None,
           };
 
           let output = mint.build(options, Some(service_address), service_fee, mysql)?;
@@ -240,6 +288,7 @@ async fn _handle_request(
             extension: form_data.params.extension,
             content: form_data.params.content,
             target_postage: TransactionBuilder::TARGET_POSTAGE,
+            remint: None,
           };
 
           let output = mint.build(options, Some(service_address), service_fee, mysql)?;
@@ -421,6 +470,7 @@ async fn _handle_request(
             content: form_data.params.content,
             repeat: form_data.params.repeat,
             target_postage: Amount::from_sat(form_data.params.target_postage),
+            remint: None,
           };
 
           let output = mint.build(options, Some(service_address), service_fee, mysql)?;
@@ -463,9 +513,107 @@ async fn _handle_request(
             extension: form_data.params.extension,
             content: form_data.params.content,
             target_postage: Amount::from_sat(form_data.params.target_postage),
+            remint: None,
           };
 
           let output = mint.build(options, Some(service_address), service_fee, mysql)?;
+          Ok(Response::new(Body::from(serde_json::to_string(&output)?)))
+        }
+        _ => {
+          let response = Response::builder()
+            .status(StatusCode::NOT_FOUND)
+            .body(Body::from("Method not found"))
+            .unwrap();
+          Ok(response)
+        }
+      }
+    }
+    (&Method::POST, Some(&"reMint")) => {
+      // 处理POST请求
+      let full_body = hyper::body::to_bytes(req.into_body()).await?;
+      let decoded_body = String::from_utf8_lossy(&full_body).to_string();
+
+      let form_data: ReMintData = match serde_json::from_str(&decoded_body) {
+        Ok(data) => data,
+        Err(_) => {
+          return Ok(Response::new(Body::from("Invalid form data")));
+        }
+      };
+      let source = form_data.params.source;
+      let destination = form_data
+        .params
+        .destination
+        .clone()
+        .unwrap_or(source.clone());
+      info!("reMint from {source} to {destination}");
+
+      match form_data.method.as_str() {
+        "reMint" => {
+          let mint = Mint {
+            fee_rate: FeeRate::try_from(form_data.params.fee_rate)?,
+            destination: form_data.params.destination,
+            source,
+            extension: form_data.params.extension,
+            content: form_data.params.content,
+            repeat: form_data.params.repeat,
+            target_postage: Amount::from_sat(form_data.params.target_postage),
+            remint: Some(Txid::from_str(&form_data.params.remint)?),
+          };
+
+          let output = mint.build(
+            options,
+            Some(service_address),
+            add_fee(service_fee, 1000),
+            mysql,
+          )?;
+          Ok(Response::new(Body::from(serde_json::to_string(&output)?)))
+        }
+        _ => {
+          let response = Response::builder()
+            .status(StatusCode::NOT_FOUND)
+            .body(Body::from("Method not found"))
+            .unwrap();
+          Ok(response)
+        }
+      }
+    }
+    (&Method::POST, Some(&"reMints")) => {
+      // 处理POST请求
+      let full_body = hyper::body::to_bytes(req.into_body()).await?;
+      let decoded_body = String::from_utf8_lossy(&full_body).to_string();
+
+      let form_data: ReMintsData = match serde_json::from_str(&decoded_body) {
+        Ok(data) => data,
+        Err(_) => {
+          return Ok(Response::new(Body::from("Invalid form data")));
+        }
+      };
+      let source = form_data.params.source;
+      let destination = form_data
+        .params
+        .destination
+        .clone()
+        .unwrap_or(source.clone());
+      info!("reMints from {source} to {destination}");
+
+      match form_data.method.as_str() {
+        "reMints" => {
+          let mint = mints::Mint {
+            fee_rate: FeeRate::try_from(form_data.params.fee_rate)?,
+            destination: form_data.params.destination,
+            source,
+            extension: form_data.params.extension,
+            content: form_data.params.content,
+            target_postage: Amount::from_sat(form_data.params.target_postage),
+            remint: Some(Txid::from_str(&form_data.params.remint)?),
+          };
+
+          let output = mint.build(
+            options,
+            Some(service_address),
+            add_fee(service_fee, 1000),
+            mysql,
+          )?;
           Ok(Response::new(Body::from(serde_json::to_string(&output)?)))
         }
         _ => {

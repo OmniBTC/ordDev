@@ -20,6 +20,8 @@ pub struct Output {
   pub transaction: String,
   pub commit_custom: Vec<String>,
   pub network_fee: u64,
+  pub commit_vsize: u64,
+  pub commit_fee: u64,
 }
 
 impl Cancel {
@@ -55,7 +57,7 @@ impl Cancel {
     // index.update()?;
 
     log::info!("Get utxo...");
-    let unspent_outputs = index.get_unspent_outputs_by_txids(&self.inputs)?;
+    let unspent_outputs = index.get_unspent_outputs_by_outpoints(&self.inputs)?;
 
     let output = vec![TxOut {
       script_pubkey: self.source.script_pubkey(),
@@ -63,6 +65,7 @@ impl Cancel {
     }];
     let (mut cancel_tx, network_fee) =
       Self::build_cancel_transaction(self.fee_rate, self.inputs, output, address_type);
+    let commit_vsize = cancel_tx.vsize() as u64;
 
     let input_amount = Self::get_amount(&cancel_tx, &unspent_outputs)?;
     if input_amount <= network_fee {
@@ -82,6 +85,8 @@ impl Cancel {
       transaction: serialize_hex(&unsigned_transaction_psbt),
       commit_custom: unsigned_commit_custom,
       network_fee,
+      commit_vsize,
+      commit_fee: network_fee,
     })
   }
 

@@ -208,27 +208,25 @@ impl Transfer {
     };
 
     let unsigned_transaction = if let Some(op_return) = self.op_return {
-      TransactionBuilder::build_multi_outgoing_with_op_return(
+      TransactionBuilder::build_transaction_with_op_return_v1(
         address_type,
         satpoints,
         inscriptions,
         unspent_outputs.clone(),
-        self.destination,
+        vec![(self.destination, amount)],
         change,
         self.fee_rate,
-        amount,
         op_return,
       )?
     } else {
-      TransactionBuilder::build_multi_outgoing_with_value(
+      TransactionBuilder::build_transaction_with_value_v1(
         address_type,
         satpoints,
         inscriptions,
         unspent_outputs.clone(),
-        self.destination,
+        vec![(self.destination, amount)],
         change,
         self.fee_rate,
-        amount,
       )?
     };
 

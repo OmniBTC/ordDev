@@ -27,6 +27,8 @@ pub struct Output {
   pub service_fee: u64,
   pub satpoint_fee: u64,
   pub network_fee: u64,
+  pub commit_vsize: u64,
+  pub commit_fee: u64,
 }
 
 #[derive(Debug, Parser)]
@@ -45,6 +47,8 @@ pub struct Mint {
   pub repeat: Option<u64>,
   #[clap(long, help = "Target postage.")]
   pub target_postage: Amount,
+  #[clap(long, help = "Remint comint id.")]
+  pub remint: Option<Txid>,
 }
 
 impl Mint {
@@ -98,7 +102,26 @@ impl Mint {
 
     log::info!("Get utxo...");
     let query_address = &format!("{}", source);
-    let utxos = index.get_unspent_outputs_by_mempool_v1(query_address, BTreeMap::new())?;
+    let (utxos, satpoints) = if let Some(commit_id) = self.remint {
+      let (utxos, recommit_tx) =
+        index.get_unspent_outputs_by_commit_id(query_address, BTreeMap::new(), commit_id)?;
+      (
+        utxos,
+        recommit_tx
+          .input
+          .iter()
+          .map(|item| SatPoint {
+            outpoint: item.previous_output,
+            offset: 0,
+          })
+          .collect::<Vec<_>>(),
+      )
+    } else {
+      (
+        index.get_unspent_outputs_by_mempool_v1(query_address, BTreeMap::new())?,
+        vec![],
+      )
+    };
 
     let mut is_whitelist = false;
     let inscriptions = if let Some(mysql) = mysql {
@@ -128,7 +151,7 @@ impl Mint {
       network_fee,
     ) = Mint::create_inscription_transactions(
       address_type,
-      None,
+      satpoints,
       inscription,
       inscriptions,
       options.chain().network(),
@@ -144,7 +167,10 @@ impl Mint {
       self.target_postage,
     )?;
 
-    let network_fee = Self::calculate_fee(&unsigned_commit_tx, &utxos) + network_fee;
+    let commit_vsize = Self::estimate_vsize(&unsigned_commit_tx, address_type) as u64;
+    let commit_fee = Self::calculate_fee(&unsigned_commit_tx, &utxos);
+
+    let network_fee = commit_fee + network_fee;
 
     let unsigned_commit_psbt = Self::get_psbt(&unsigned_commit_tx, &utxos, &source)?;
     let unsigned_commit_custom = Self::get_custom(&unsigned_commit_psbt);
@@ -161,6 +187,8 @@ impl Mint {
       service_fee,
       satpoint_fee,
       network_fee,
+      commit_vsize,
+      commit_fee,
     };
     log::info!("Build mint success");
     Ok(output)
@@ -221,7 +249,7 @@ impl Mint {
 
   fn create_inscription_transactions(
     input_type: AddressType,
-    satpoint: Option<SatPoint>,
+    satpoints: Vec<SatPoint>,
     inscription: Inscription,
     inscriptions: BTreeMap<SatPoint, InscriptionId>,
     network: Network,
@@ -236,34 +264,36 @@ impl Mint {
     service_fee: Amount,
     target_postage: Amount,
   ) -> Result<(Transaction, Vec<Transaction>, TweakedKeyPair, u64, u64, u64)> {
-    let satpoint = if let Some(satpoint) = satpoint {
-      satpoint
+    let satpoints = if !satpoints.is_empty() {
+      satpoints
     } else {
       let inscribed_utxos = inscriptions
         .keys()
         .map(|satpoint| satpoint.outpoint)
         .collect::<BTreeSet<OutPoint>>();
 
-      utxos
+      vec![utxos
         .keys()
         .find(|outpoint| !inscribed_utxos.contains(outpoint))
         .map(|outpoint| SatPoint {
           outpoint: *outpoint,
           offset: 0,
         })
-        .ok_or_else(|| anyhow!("wallet contains no cardinal utxos"))?
+        .ok_or_else(|| anyhow!("wallet contains no cardinal utxos"))?]
     };
 
     for (inscribed_satpoint, inscription_id) in &inscriptions {
-      if inscribed_satpoint == &satpoint {
-        return Err(anyhow!("sat at {} already inscribed", satpoint));
-      }
+      for satpoint in &satpoints {
+        if inscribed_satpoint == satpoint {
+          return Err(anyhow!("sat at {} already inscribed", satpoint));
+        }
 
-      if inscribed_satpoint.outpoint == satpoint.outpoint {
-        return Err(anyhow!(
+        if inscribed_satpoint.outpoint == satpoint.outpoint {
+          return Err(anyhow!(
           "utxo {} already inscribed with inscription {inscription_id} on sat {inscribed_satpoint}",
           satpoint.outpoint,
         ));
+        }
       }
     }
 
@@ -296,30 +326,13 @@ impl Mint {
       service_fee = Amount::from_sat(600);
     }
 
-    for i in (0..repeat).rev() {
-      let reveal_output = if i == 0 && repeat == 1 {
+    let mut outputs = vec![];
+    for i in 0..repeat {
+      let reveal_output = if i == 0 {
         let mut tx_out = vec![TxOut {
           script_pubkey: destination.script_pubkey(),
           value: 0,
         }];
-        if service_fee.to_sat() > 0 {
-          tx_out.push(TxOut {
-            script_pubkey: service_address.script_pubkey(),
-            value: 0,
-          });
-        }
-        tx_out
-      } else if i == 0 && repeat > 1 {
-        let mut tx_out = vec![TxOut {
-          script_pubkey: destination.script_pubkey(),
-          value: 0,
-        }];
-        for _ in 1..repeat {
-          tx_out.push(TxOut {
-            script_pubkey: commit_tx_address.script_pubkey(),
-            value: 0,
-          });
-        }
         if service_fee.to_sat() > 0 {
           tx_out.push(TxOut {
             script_pubkey: service_address.script_pubkey(),
@@ -341,28 +354,25 @@ impl Mint {
         &reveal_script,
       );
       reveal_fees.push(reveal_fee);
+      if i == 0 {
+        outputs.push((
+          commit_tx_address.clone(),
+          reveal_fee + target_postage + service_fee,
+        ));
+      } else {
+        outputs.push((commit_tx_address.clone(), reveal_fee + target_postage));
+      }
     }
-    reveal_fees.reverse();
 
-    let unsigned_commit_tx = TransactionBuilder::build_transaction_with_value(
+    let unsigned_commit_tx = TransactionBuilder::build_transaction_with_value_v1(
       input_type,
-      satpoint,
+      satpoints,
       inscriptions,
       utxos,
-      commit_tx_address.clone(),
+      outputs,
       change,
       commit_fee_rate,
-      reveal_fees.clone().into_iter().sum::<Amount>()
-        + target_postage * (repeat as u64)
-        + service_fee,
     )?;
-
-    let (vout, output) = unsigned_commit_tx
-      .output
-      .iter()
-      .enumerate()
-      .find(|(_vout, output)| output.script_pubkey == commit_tx_address.script_pubkey())
-      .expect("should find sat commit/inscription output");
 
     let mut reveal_txs: Vec<Transaction> = vec![];
 
@@ -370,29 +380,11 @@ impl Mint {
     let network_fee = reveal_fees.clone().into_iter().sum::<Amount>().to_sat();
     let service_fee = service_fee.to_sat();
     for i in 0..repeat {
-      let reveal_output = if i == 0 && repeat == 1 {
+      let reveal_output = if i == 0 {
         let mut tx_out = vec![TxOut {
           script_pubkey: destination.script_pubkey(),
           value: target_postage.to_sat(),
         }];
-        if service_fee > 0 {
-          tx_out.push(TxOut {
-            script_pubkey: service_address.script_pubkey(),
-            value: service_fee,
-          })
-        }
-        tx_out
-      } else if i == 0 && repeat > 1 {
-        let mut tx_out = vec![TxOut {
-          script_pubkey: destination.script_pubkey(),
-          value: target_postage.to_sat(),
-        }];
-        for fee in reveal_fees.iter().take(repeat).skip(1) {
-          tx_out.push(TxOut {
-            script_pubkey: commit_tx_address.script_pubkey(),
-            value: (*fee + target_postage).to_sat(),
-          })
-        }
         if service_fee > 0 {
           tx_out.push(TxOut {
             script_pubkey: service_address.script_pubkey(),
@@ -407,11 +399,7 @@ impl Mint {
         }]
       };
 
-      let (txid, vout) = if i == 0 {
-        (unsigned_commit_tx.txid(), vout.try_into().unwrap())
-      } else {
-        (reveal_txs[0].txid(), u32::try_from(i).unwrap())
-      };
+      let (txid, vout) = (unsigned_commit_tx.txid(), u32::try_from(i).unwrap());
 
       let (mut reveal_tx, _fee) = Self::build_reveal_transaction(
         &control_block,
@@ -427,11 +415,7 @@ impl Mint {
 
       let mut sighash_cache = SighashCache::new(&mut reveal_tx);
 
-      let prevout = if i == 0 {
-        output
-      } else {
-        &reveal_txs[0].output[i]
-      };
+      let prevout = unsigned_commit_tx.output[i].clone();
 
       let signature_hash = sighash_cache
         .taproot_script_spend_signature_hash(
@@ -485,6 +469,19 @@ impl Mint {
       satpoint_fee,
       network_fee,
     ))
+  }
+
+  fn estimate_vsize(transaction: &Transaction, input_type: AddressType) -> usize {
+    let mut modified_tx = transaction.clone();
+    let witness_size = if input_type == AddressType::P2tr {
+      TransactionBuilder::SCHNORR_SIGNATURE_SIZE
+    } else {
+      TransactionBuilder::P2WPKH_WINETSS_SIZE
+    };
+    for input in &mut modified_tx.input {
+      input.witness = Witness::from_vec(vec![vec![0; witness_size]]);
+    }
+    modified_tx.vsize()
   }
 
   fn build_reveal_transaction(
