@@ -15,6 +15,7 @@ use ord::subcommand::wallet::mints;
 use ord::subcommand::wallet::transfer::Transfer;
 use ord::{FeeRate, TransactionBuilder};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -186,6 +187,19 @@ struct ReMintsData {
   params: ReMintsParam,
 }
 
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
+struct IsWhitelistParam {
+  source: String,
+}
+
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
+struct IsWhitelistData {
+  jsonrpc: Option<String>,
+  id: Option<u32>,
+  method: String,
+  params: IsWhitelistParam,
+}
+
 fn add_fee(service_fee: Option<Amount>, add: u64) -> Option<Amount> {
   if let Some(fee) = service_fee {
     Some(fee + Amount::from_sat(add))
@@ -216,8 +230,39 @@ async fn _handle_request(
       }
       _ => Ok(Response::new(Body::from("get not recognize"))),
     },
+    (&Method::POST, Some(&"isWhitelist")) => {
+      let full_body = hyper::body::to_bytes(req.into_body()).await?;
+      let decoded_body = String::from_utf8_lossy(&full_body).to_string();
+
+      let form_data: IsWhitelistData = match serde_json::from_str(&decoded_body) {
+        Ok(data) => data,
+        Err(_) => {
+          return Ok(Response::new(Body::from("Invalid form data")));
+        }
+      };
+      let source = form_data.params.source.clone();
+      info!("isWhitelist from {source}");
+
+      match form_data.method.as_str() {
+        "isWhitelist" => {
+          let data = mysql
+            .ok_or(anyhow!("not database"))?
+            .is_whitelist(&form_data.params.source);
+
+          let mut output = BTreeMap::new();
+          output.insert("is_whitelist", data);
+          Ok(Response::new(Body::from(serde_json::to_string(&output)?)))
+        }
+        _ => {
+          let response = Response::builder()
+            .status(StatusCode::NOT_FOUND)
+            .body(Body::from("Method not found"))
+            .unwrap();
+          Ok(response)
+        }
+      }
+    }
     (&Method::POST, Some(&"mint")) => {
-      // 处理POST请求
       let full_body = hyper::body::to_bytes(req.into_body()).await?;
       let decoded_body = String::from_utf8_lossy(&full_body).to_string();
 
@@ -261,7 +306,6 @@ async fn _handle_request(
       }
     }
     (&Method::POST, Some(&"mints")) => {
-      // 处理POST请求
       let full_body = hyper::body::to_bytes(req.into_body()).await?;
       let decoded_body = String::from_utf8_lossy(&full_body).to_string();
 
@@ -304,7 +348,6 @@ async fn _handle_request(
       }
     }
     (&Method::POST, Some(&"transfer")) => {
-      // 处理POST请求
       let full_body = hyper::body::to_bytes(req.into_body()).await?;
       let decoded_body = String::from_utf8_lossy(&full_body).to_string();
 
@@ -354,7 +397,6 @@ async fn _handle_request(
       }
     }
     (&Method::POST, Some(&"transferWithFee")) => {
-      // 处理POST请求
       let full_body = hyper::body::to_bytes(req.into_body()).await?;
       let decoded_body = String::from_utf8_lossy(&full_body).to_string();
 
@@ -404,7 +446,6 @@ async fn _handle_request(
       }
     }
     (&Method::POST, Some(&"cancel")) => {
-      // 处理POST请求
       let full_body = hyper::body::to_bytes(req.into_body()).await?;
       let decoded_body = String::from_utf8_lossy(&full_body).to_string();
 
@@ -442,7 +483,6 @@ async fn _handle_request(
       }
     }
     (&Method::POST, Some(&"mintWithPostage")) => {
-      // 处理POST请求
       let full_body = hyper::body::to_bytes(req.into_body()).await?;
       let decoded_body = String::from_utf8_lossy(&full_body).to_string();
 
@@ -486,7 +526,6 @@ async fn _handle_request(
       }
     }
     (&Method::POST, Some(&"mintsWithPostage")) => {
-      // 处理POST请求
       let full_body = hyper::body::to_bytes(req.into_body()).await?;
       let decoded_body = String::from_utf8_lossy(&full_body).to_string();
 
@@ -529,7 +568,6 @@ async fn _handle_request(
       }
     }
     (&Method::POST, Some(&"reMint")) => {
-      // 处理POST请求
       let full_body = hyper::body::to_bytes(req.into_body()).await?;
       let decoded_body = String::from_utf8_lossy(&full_body).to_string();
 
@@ -578,7 +616,6 @@ async fn _handle_request(
       }
     }
     (&Method::POST, Some(&"reMints")) => {
-      // 处理POST请求
       let full_body = hyper::body::to_bytes(req.into_body()).await?;
       let decoded_body = String::from_utf8_lossy(&full_body).to_string();
 

@@ -191,7 +191,7 @@ impl Mint {
       satpoint_fee,
       network_fee,
       commit_vsize,
-      commit_fee
+      commit_fee,
     };
     log::info!("Build mint success");
     Ok(output)
