@@ -470,7 +470,12 @@ async fn _handle_request(
             source,
             inputs,
           };
-          let output = cancel.build(options, mysql)?;
+          let output = cancel.build(
+            options,
+            Some(service_address),
+            Some(Amount::from_sat(1000)),
+            mysql,
+          )?;
           Ok(Response::new(Body::from(serde_json::to_string(&output)?)))
         }
         _ => {

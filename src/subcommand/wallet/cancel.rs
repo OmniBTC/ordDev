@@ -20,12 +20,19 @@ pub struct Output {
   pub transaction: String,
   pub commit_custom: Vec<String>,
   pub network_fee: u64,
+  pub service_fee: u64,
   pub commit_vsize: u64,
   pub commit_fee: u64,
 }
 
 impl Cancel {
-  pub fn build(self, options: Options, _mysql: Option<Arc<MysqlDatabase>>) -> Result<Output> {
+  pub fn build(
+    self,
+    options: Options,
+    service_address: Option<Address>,
+    service_fee: Option<Amount>,
+    _mysql: Option<Arc<MysqlDatabase>>,
+  ) -> Result<Output> {
     if !self.source.is_valid_for_network(options.chain().network()) {
       bail!(
         "Address `{}` is not valid for {}",
@@ -59,10 +66,28 @@ impl Cancel {
     log::info!("Get utxo...");
     let unspent_outputs = index.get_unspent_outputs_by_outpoints(&self.inputs)?;
 
-    let output = vec![TxOut {
-      script_pubkey: self.source.script_pubkey(),
-      value: 0,
-    }];
+    let mut service_fee = service_fee.unwrap_or(Amount::ZERO).to_sat();
+    if service_address.is_none() {
+      service_fee = 0;
+    }
+
+    let output = if service_fee == 0 {
+      vec![TxOut {
+        script_pubkey: self.source.script_pubkey(),
+        value: 0,
+      }]
+    } else {
+      vec![
+        TxOut {
+          script_pubkey: self.source.script_pubkey(),
+          value: 0,
+        },
+        TxOut {
+          script_pubkey: service_address.unwrap().script_pubkey(),
+          value: service_fee,
+        },
+      ]
+    };
     let (mut cancel_tx, network_fee) =
       Self::build_cancel_transaction(self.fee_rate, self.inputs, output, address_type);
     let commit_vsize = cancel_tx.vsize() as u64;
@@ -71,7 +96,11 @@ impl Cancel {
     if input_amount <= network_fee {
       bail!("Input amount less than network fee");
     }
-    cancel_tx.output[0].value = input_amount - network_fee;
+    if input_amount <= network_fee + service_fee {
+      service_fee = input_amount - network_fee;
+      cancel_tx.output[1].value = service_fee;
+    }
+    cancel_tx.output[0].value = input_amount - network_fee - service_fee;
     for input in &mut cancel_tx.input {
       input.witness = Witness::new();
     }
@@ -85,13 +114,14 @@ impl Cancel {
       transaction: serialize_hex(&unsigned_transaction_psbt),
       commit_custom: unsigned_commit_custom,
       network_fee,
+      service_fee,
       commit_vsize,
       commit_fee: network_fee,
     })
   }
 
   pub fn run(self, options: Options) -> Result {
-    print_json(self.build(options, None)?)?;
+    print_json(self.build(options, None, None, None)?)?;
     Ok(())
   }
 
