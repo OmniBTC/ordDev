@@ -710,9 +710,14 @@ async fn handle_request(
     Ok(response) => response,
     Err(panic) => {
       error!("Req panic:{panic}");
-      Ok(Response::new(Body::from(
-        "API requests are too frequent, please try again later",
-      )))
+      Ok(
+        Response::builder()
+          .status(StatusCode::BAD_REQUEST)
+          .body(Body::from(
+            "API requests are too frequent, please try again later",
+          ))
+          .unwrap(),
+      )
     }
   }
 }
