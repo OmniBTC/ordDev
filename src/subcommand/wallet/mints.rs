@@ -106,7 +106,9 @@ impl Mint {
 
     log::info!("Get utxo...");
     let query_address = &format!("{}", source);
+    let mut additional_service_fee = Amount::ZERO;
     let (utxos, satpoints) = if let Some(commit_id) = self.remint {
+      additional_service_fee = Amount::from_sat(3000);
       let (utxos, recommit_tx) =
         index.get_unspent_outputs_by_commit_id(query_address, BTreeMap::new(), commit_id)?;
       (
@@ -168,6 +170,7 @@ impl Mint {
       service_address,
       service_fee,
       self.target_postage,
+      additional_service_fee,
     )?;
 
     let commit_vsize = Self::estimate_vsize(&unsigned_commit_tx, address_type) as u64;
@@ -265,6 +268,7 @@ impl Mint {
     service_address: Address,
     service_fee: Amount,
     target_postage: Amount,
+    additional_service_fee: Amount,
   ) -> Result<(
     Transaction,
     Vec<Transaction>,
@@ -354,8 +358,12 @@ impl Mint {
     let mut reveal_fees: Vec<Amount> = vec![];
 
     let mut service_fee = service_fee * (repeat as u64);
-    if service_fee.to_sat() != 0 && service_fee.to_sat() < 600 {
-      service_fee = Amount::from_sat(600);
+    if service_fee.to_sat() != 0 {
+      if service_fee.to_sat() < 600 {
+        service_fee = Amount::from_sat(600) + additional_service_fee;
+      } else {
+        service_fee = service_fee + additional_service_fee;
+      }
     }
 
     let mut outputs = vec![];

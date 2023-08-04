@@ -606,7 +606,7 @@ async fn _handle_request(
           let output = mint.build(
             options,
             Some(service_address),
-            add_fee(service_fee, 1000),
+            service_fee,
             mysql,
           )?;
           Ok(Response::new(Body::from(serde_json::to_string(&output)?)))
@@ -653,7 +653,7 @@ async fn _handle_request(
           let output = mint.build(
             options,
             Some(service_address),
-            add_fee(service_fee, 1000),
+            service_fee,
             mysql,
           )?;
           Ok(Response::new(Body::from(serde_json::to_string(&output)?)))
@@ -705,7 +705,7 @@ async fn handle_request(
       }
     }
   })
-  .await;
+    .await;
   match result {
     Ok(response) => response,
     Err(panic) => {
@@ -814,7 +814,7 @@ async fn main() {
       .map(|s| s.as_str())
       .unwrap(),
   )
-  .unwrap();
+    .unwrap();
 
   let chain_argument = match chain {
     "main" => Chain::Mainnet,
