@@ -34,7 +34,7 @@ impl Media {
     ("model/gltf-binary", Media::Unknown, &["glb"]),
     ("model/stl", Media::Unknown, &["stl"]),
     ("text/html;charset=utf-8", Media::Iframe, &["html"]),
-    ("text/plain;charset=utf-8", Media::Text, &["txt"]),
+    ("text/plain", Media::Text, &["txt"]),
     ("video/mp4", Media::Video, &["mp4"]),
     ("video/webm", Media::Video, &["webm"]),
   ];
