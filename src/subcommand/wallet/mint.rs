@@ -325,14 +325,7 @@ impl Mint {
 
     let mut reveal_fees: Vec<Amount> = vec![];
 
-    let mut service_fee = service_fee * (repeat as u64);
-    if service_fee.to_sat() != 0 {
-      if service_fee.to_sat() < 600 {
-        service_fee = Amount::from_sat(600) + additional_service_fee;
-      } else {
-        service_fee = service_fee + additional_service_fee;
-      }
-    }
+    let service_fee = service_fee * (repeat as u64)  + additional_service_fee;
 
     let mut outputs = vec![];
     for i in 0..repeat {
