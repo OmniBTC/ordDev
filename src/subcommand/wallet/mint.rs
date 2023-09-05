@@ -8,9 +8,7 @@ use {
     blockdata::script,
     policy::MAX_STANDARD_TX_WEIGHT,
     schnorr::{TapTweak, TweakedKeyPair, TweakedPublicKey, UntweakedKeyPair},
-    secp256k1::{
-      self, rand, Secp256k1, XOnlyPublicKey,
-    },
+    secp256k1::{self, rand, Secp256k1, XOnlyPublicKey},
     util::sighash::{Prevouts, SighashCache},
     util::taproot::{ControlBlock, LeafVersion, TapLeafHash, TaprootBuilder},
     PackedLockTime, SchnorrSighashType, Witness,

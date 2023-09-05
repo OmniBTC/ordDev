@@ -382,6 +382,7 @@ impl TransactionBuilder {
     })
   }
 
+  // Add the first outgoing to the input and output
   fn select_outgoing(mut self) -> Result<Self> {
     for (inscribed_satpoint, inscription_id) in &self.inscriptions {
       if self.outgoing.outpoint == inscribed_satpoint.outpoint
@@ -417,6 +418,7 @@ impl TransactionBuilder {
     Ok(self)
   }
 
+  // Add remaining outgoing to input and output
   fn add_outgoing(mut self, outgoing: SatPoint) -> Result<Self> {
     for (inscribed_satpoint, inscription_id) in &self.inscriptions {
       if outgoing.outpoint == inscribed_satpoint.outpoint
@@ -502,6 +504,7 @@ impl TransactionBuilder {
     Ok(self)
   }
 
+  // Add outputs
   fn add_outputs(mut self, mut data: Vec<(Address, Amount)>) -> Result<Self> {
     data.reverse();
     for item in data {
@@ -511,38 +514,41 @@ impl TransactionBuilder {
   }
 
   fn add_value(mut self) -> Result<Self> {
-    let estimated_fee = self.estimate_fee();
+    let mut input_amount = self.outputs.last().unwrap().1;
+    loop {
+      let estimated_fee = self.estimate_fee();
 
-    let min_value = match self.target {
-      Target::Postage => self.outputs.last().unwrap().0.script_pubkey().dust_value(),
-      Target::Value(value) => value,
-    };
+      let min_value = match self.target {
+        Target::Postage => self.outputs.last().unwrap().0.script_pubkey().dust_value(),
+        Target::Value(value) => value,
+      };
 
-    let mut addition_output_value = Amount::ZERO;
-    for item in &self.outputs[..self.outputs.len() - 1] {
-      addition_output_value += item.1;
-    }
-
-    let total = min_value
-      .checked_add(estimated_fee)
-      .ok_or(Error::ValueOverflow)?
-      .checked_add(addition_output_value)
-      .ok_or(Error::ValueOverflow)?;
-
-    if let Some(deficit) = total.checked_sub(self.outputs.last().unwrap().1) {
-      if deficit > Amount::ZERO {
-        let needed = deficit
-          .checked_add(self.fee_rate.fee(Self::ADDITIONAL_INPUT_VBYTES))
-          .ok_or(Error::ValueOverflow)?;
-        let (utxo, value) = self.select_cardinal_utxo(needed)?;
-        self.inputs.push(utxo);
-        self.outputs.last_mut().unwrap().1 += value - addition_output_value;
-        tprintln!("added {value} sat input to cover {deficit} sat deficit");
+      let mut addition_output_value = Amount::ZERO;
+      for item in &self.outputs[..self.outputs.len() - 1] {
+        addition_output_value += item.1;
       }
-    } else {
-      self.outputs.last_mut().unwrap().1 -= addition_output_value;
-    }
 
+      let total = min_value
+        .checked_add(estimated_fee)
+        .ok_or(Error::ValueOverflow)?
+        .checked_add(addition_output_value)
+        .ok_or(Error::ValueOverflow)?;
+
+      if let Some(deficit) = total.checked_sub(input_amount) {
+        if deficit > Amount::ZERO {
+          let (utxo, value) = self.select_max_cardinal_utxo()?;
+          self.inputs.push(utxo);
+          input_amount += value;
+          tprintln!("added {value} sat input to cover {deficit} sat deficit");
+        } else {
+          self.outputs.last_mut().unwrap().1 = input_amount - addition_output_value;
+          break;
+        }
+      } else {
+        self.outputs.last_mut().unwrap().1 = input_amount - addition_output_value;
+        break;
+      }
+    }
     Ok(self)
   }
 
@@ -956,6 +962,36 @@ impl TransactionBuilder {
       if value >= minimum_value {
         found = Some((*utxo, value));
         break;
+      }
+    }
+
+    let (utxo, value) = found.ok_or(Error::NotEnoughCardinalUtxos)?;
+
+    self.utxos.remove(&utxo);
+
+    Ok((utxo, value))
+  }
+
+  fn select_max_cardinal_utxo(&mut self) -> Result<(OutPoint, Amount)> {
+    let mut found = None;
+
+    let inscribed_utxos = self
+      .inscriptions
+      .keys()
+      .map(|satpoint| satpoint.outpoint)
+      .collect::<BTreeSet<OutPoint>>();
+
+    let mut last_value = Amount::ZERO;
+    for utxo in &self.utxos {
+      if inscribed_utxos.contains(utxo) {
+        continue;
+      }
+
+      let value = self.amounts[utxo];
+
+      if value > last_value {
+        found = Some((*utxo, value));
+        last_value = value;
       }
     }
 

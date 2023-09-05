@@ -340,7 +340,10 @@ impl Updater {
           };
           // Send all tx output values back in order
           for (i, tx) in txs.iter().flatten().enumerate() {
-            let Ok(_) = value_sender.send(tx.output[usize::try_from(outpoints[i].vout).unwrap()].value).await else {
+            let Ok(_) = value_sender
+              .send(tx.output[usize::try_from(outpoints[i].vout).unwrap()].value)
+              .await
+            else {
               log::error!("Value channel closed unexpectedly");
               return;
             };
