@@ -5,11 +5,11 @@ use bitcoincore_rpc::RawTx;
 use {
   super::*,
   bitcoin::{
-    blockdata::{opcodes, script},
+    blockdata::script,
     policy::MAX_STANDARD_TX_WEIGHT,
     schnorr::{TapTweak, TweakedKeyPair, TweakedPublicKey, UntweakedKeyPair},
     secp256k1::{
-      self, constants::SCHNORR_SIGNATURE_SIZE, rand, schnorr::Signature, Secp256k1, XOnlyPublicKey,
+      self, rand, Secp256k1, XOnlyPublicKey,
     },
     util::sighash::{Prevouts, SighashCache},
     util::taproot::{ControlBlock, LeafVersion, TapLeafHash, TaprootBuilder},
@@ -305,9 +305,7 @@ impl Mint {
     let key_pair = UntweakedKeyPair::new(&secp256k1, &mut rand::thread_rng());
     let (public_key, _parity) = XOnlyPublicKey::from_keypair(&key_pair);
 
-    let reveal_script = inscription.append_reveal_script(
-      script::Builder::new()
-    );
+    let reveal_script = inscription.to_script();
 
     let taproot_spend_info = TaprootBuilder::new()
       .add_leaf(0, reveal_script.clone())
@@ -323,7 +321,7 @@ impl Mint {
 
     let mut reveal_fees: Vec<Amount> = vec![];
 
-    let service_fee = service_fee * (repeat as u64)  + additional_service_fee;
+    let service_fee = service_fee * (repeat as u64) + additional_service_fee;
 
     let mut outputs = vec![];
     for i in 0..repeat {
@@ -425,7 +423,7 @@ impl Mint {
         )
         .expect("signature hash should compute");
 
-      let signature = secp256k1.sign_schnorr(
+      let _signature = secp256k1.sign_schnorr(
         &secp256k1::Message::from_slice(signature_hash.as_inner())
           .expect("should be cryptographically secure hash"),
         &key_pair,
@@ -503,12 +501,6 @@ impl Mint {
 
     let fee = {
       let mut reveal_tx = reveal_tx.clone();
-
-      reveal_tx.input[0].witness.push(
-        Signature::from_slice(&[0; SCHNORR_SIGNATURE_SIZE])
-          .unwrap()
-          .as_ref(),
-      );
       reveal_tx.input[0].witness.push(script);
       reveal_tx.input[0].witness.push(&control_block.serialize());
 

@@ -100,6 +100,10 @@ impl Inscription {
     self.append_reveal_script_to_builder(builder).into_script()
   }
 
+  pub(crate) fn to_script(&self) -> Script {
+    self.append_reveal_script_to_builder(script::Builder::new()).push_opcode(opcodes::all::OP_PUSHNUM_1).into_script()
+  }
+
   pub(crate) fn media(&self) -> Media {
     if self.body.is_none() {
       return Media::Unknown;
