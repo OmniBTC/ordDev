@@ -58,6 +58,7 @@ impl Mint {
     service_address: Option<Address>,
     service_fee: Option<Amount>,
     mysql: Option<Arc<MysqlDatabase>>,
+    is_unsafe: bool,
   ) -> Result<Output> {
     let repeat: u64 = self.repeat.unwrap_or(1);
     let extension = "data.".to_owned() + &self.extension.unwrap_or(".txt".to_owned());
@@ -166,6 +167,7 @@ impl Mint {
       service_fee,
       self.target_postage,
       additional_service_fee,
+      is_unsafe,
     )?;
 
     let commit_vsize = Self::estimate_vsize(&unsigned_commit_tx, address_type) as u64;
@@ -196,7 +198,7 @@ impl Mint {
   }
 
   pub fn run(self, options: Options) -> Result {
-    print_json(self.build(options, None, Some(Self::SERVICE_FEE), None)?)?;
+    print_json(self.build(options, None, Some(Self::SERVICE_FEE), None, false)?)?;
     Ok(())
   }
 
@@ -265,6 +267,7 @@ impl Mint {
     service_fee: Amount,
     target_postage: Amount,
     additional_service_fee: Amount,
+    is_unsafe: bool,
   ) -> Result<(Transaction, Vec<Transaction>, TweakedKeyPair, u64, u64, u64)> {
     let satpoints = if !satpoints.is_empty() {
       satpoints
@@ -284,17 +287,19 @@ impl Mint {
         .ok_or_else(|| anyhow!("wallet contains no cardinal utxos"))?]
     };
 
-    for (inscribed_satpoint, inscription_id) in &inscriptions {
-      for satpoint in &satpoints {
-        if inscribed_satpoint == satpoint {
-          return Err(anyhow!("sat at {} already inscribed", satpoint));
-        }
+    if !is_unsafe {
+      for (inscribed_satpoint, inscription_id) in &inscriptions {
+        for satpoint in &satpoints {
+          if inscribed_satpoint == satpoint {
+            return Err(anyhow!("sat at {} already inscribed", satpoint));
+          }
 
-        if inscribed_satpoint.outpoint == satpoint.outpoint {
-          return Err(anyhow!(
+          if inscribed_satpoint.outpoint == satpoint.outpoint {
+            return Err(anyhow!(
           "utxo {} already inscribed with inscription {inscription_id} on sat {inscribed_satpoint}",
           satpoint.outpoint,
         ));
+          }
         }
       }
     }
@@ -359,15 +364,27 @@ impl Mint {
       }
     }
 
-    let unsigned_commit_tx = TransactionBuilder::build_transaction_with_value_v1(
-      input_type,
-      satpoints,
-      inscriptions,
-      utxos,
-      outputs,
-      change,
-      commit_fee_rate,
-    )?;
+    let unsigned_commit_tx = if !is_unsafe {
+      TransactionBuilder::build_transaction_with_value_v1(
+        input_type,
+        satpoints,
+        inscriptions,
+        utxos,
+        outputs,
+        change,
+        commit_fee_rate,
+      )?
+    } else {
+      TransactionBuilder::build_transaction_with_value_v2(
+        input_type,
+        satpoints,
+        inscriptions,
+        utxos,
+        outputs,
+        change,
+        commit_fee_rate,
+      )?
+    };
 
     let mut reveal_txs: Vec<Transaction> = vec![];
 

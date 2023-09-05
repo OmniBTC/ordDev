@@ -293,7 +293,7 @@ async fn _handle_request(
             remint: None,
           };
 
-          let output = mint.build(options, Some(service_address), service_fee, mysql)?;
+          let output = mint.build(options, Some(service_address), service_fee, mysql, false)?;
           Ok(Response::new(Body::from(serde_json::to_string(&output)?)))
         }
         _ => {
@@ -518,7 +518,50 @@ async fn _handle_request(
             remint: None,
           };
 
-          let output = mint.build(options, Some(service_address), service_fee, mysql)?;
+          let output = mint.build(options, Some(service_address), service_fee, mysql, false)?;
+          Ok(Response::new(Body::from(serde_json::to_string(&output)?)))
+        }
+        _ => {
+          let response = Response::builder()
+            .status(StatusCode::NOT_FOUND)
+            .body(Body::from("Method not found"))
+            .unwrap();
+          Ok(response)
+        }
+      }
+    }
+    (&Method::POST, Some(&"unsafeMintWithPostage")) => {
+      let full_body = hyper::body::to_bytes(req.into_body()).await?;
+      let decoded_body = String::from_utf8_lossy(&full_body).to_string();
+
+      let form_data: MintWithPostageData = match serde_json::from_str(&decoded_body) {
+        Ok(data) => data,
+        Err(_) => {
+          return Ok(Response::new(Body::from("Invalid form data")));
+        }
+      };
+      let source = form_data.params.source;
+      let destination = form_data
+        .params
+        .destination
+        .clone()
+        .unwrap_or(source.clone());
+      info!("UnsafeMintWithPostage from {source} to {destination}");
+
+      match form_data.method.as_str() {
+        "unsafeMintWithPostage" => {
+          let mint = Mint {
+            fee_rate: FeeRate::try_from(form_data.params.fee_rate)?,
+            destination: form_data.params.destination,
+            source,
+            extension: form_data.params.extension,
+            content: form_data.params.content,
+            repeat: form_data.params.repeat,
+            target_postage: Amount::from_sat(form_data.params.target_postage),
+            remint: None,
+          };
+
+          let output = mint.build(options, Some(service_address), service_fee, mysql, true)?;
           Ok(Response::new(Body::from(serde_json::to_string(&output)?)))
         }
         _ => {
@@ -603,7 +646,7 @@ async fn _handle_request(
             remint: Some(Txid::from_str(&form_data.params.remint)?),
           };
 
-          let output = mint.build(options, Some(service_address), service_fee, mysql)?;
+          let output = mint.build(options, Some(service_address), service_fee, mysql, false)?;
           Ok(Response::new(Body::from(serde_json::to_string(&output)?)))
         }
         _ => {
