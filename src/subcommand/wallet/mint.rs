@@ -307,8 +307,6 @@ impl Mint {
 
     let reveal_script = inscription.append_reveal_script(
       script::Builder::new()
-        .push_slice(&public_key.serialize())
-        .push_opcode(opcodes::all::OP_CHECKSIG),
     );
 
     let taproot_spend_info = TaprootBuilder::new()
@@ -436,7 +434,6 @@ impl Mint {
       let witness = sighash_cache
         .witness_mut(0)
         .expect("getting mutable witness reference should work");
-      witness.push(signature.as_ref());
       witness.push(reveal_script.clone());
       witness.push(&control_block.serialize());
 
