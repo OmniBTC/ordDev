@@ -473,7 +473,7 @@ async fn _handle_request(
           let output = cancel.build(
             options,
             Some(service_address),
-            Some(Amount::from_sat(1000)),
+            Some(Amount::from_sat(0)),
             mysql,
           )?;
           Ok(Response::new(Body::from(serde_json::to_string(&output)?)))
@@ -882,7 +882,7 @@ async fn main() {
     wallet: "ord".to_string(),
   };
 
-  let addr = SocketAddr::new(ip.as_str().parse().unwrap(), 3080);
+  let addr = SocketAddr::new(ip.as_str().parse().unwrap(), 3090);
   info!(
     "Server running at http://{}, network:{:?}, service:{:?}",
     addr,
