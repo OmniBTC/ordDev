@@ -474,6 +474,55 @@ impl Index {
     Ok(index)
   }
 
+  pub(crate) fn get_txs(
+    &self,
+    txids: &Vec<Txid>,
+  ) -> Result<(BTreeMap<OutPoint, Amount>, Vec<Transaction>)> {
+    let mut txs = vec![];
+    let mut utxos = BTreeMap::new();
+    let mut pre_txids = vec![];
+
+    for txid in txids {
+      let url = format!(
+        "{}tx/{}/hex",
+        self.options.chain().default_mempool_url(),
+        *txid,
+      );
+
+      let rep = Vec::from_hex(&reqwest::blocking::get(url)?.text()?)?;
+      let tx: Transaction = Decodable::consensus_decode(&mut rep.as_slice()).unwrap();
+      for input in tx.input.clone() {
+        let pre_txid = input.previous_output.txid;
+        if !pre_txids.contains(&pre_txid) {
+          pre_txids.push(pre_txid);
+        }
+      }
+      txs.push(tx);
+    }
+
+    for pre_txid in pre_txids {
+      let url = format!(
+        "{}tx/{}/hex",
+        self.options.chain().default_mempool_url(),
+        pre_txid,
+      );
+
+      let rep = Vec::from_hex(&reqwest::blocking::get(url)?.text()?)?;
+      let tx: Transaction = Decodable::consensus_decode(&mut rep.as_slice()).unwrap();
+      for k in 0..tx.output.len() {
+        utxos.insert(
+          OutPoint {
+            txid: pre_txid,
+            vout: k as u32,
+          },
+          Amount::from_sat(tx.output[k].value),
+        );
+      }
+    }
+
+    Ok((utxos, txs))
+  }
+
   pub(crate) fn get_unspent_outputs_by_commit_id(
     &self,
     addr: &str,

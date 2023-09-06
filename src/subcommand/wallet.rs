@@ -15,6 +15,7 @@ use {
 };
 
 pub mod balance;
+pub mod burt;
 pub mod cancel;
 pub mod cardinals;
 pub mod create;
@@ -47,6 +48,8 @@ pub(crate) enum Wallet {
   Mints(mints::Mint),
   #[clap(about = "Cancel transaction")]
   Cancel(cancel::Cancel),
+  #[clap(about = "Burt transaction")]
+  Burt(burt::Burt),
   #[clap(about = "List wallet inscriptions")]
   Inscriptions,
   #[clap(about = "Generate receive address")]
@@ -75,6 +78,7 @@ impl Wallet {
       Self::Mint(mint) => mint.run(options),
       Self::Mints(mints) => mints.run(options),
       Self::Cancel(cancel) => cancel.run(options),
+      Self::Burt(burt) => burt.run(options),
       Self::Inscriptions => inscriptions::run(options),
       Self::Receive => receive::run(options),
       Self::Restore(restore) => restore.run(options),
