@@ -523,7 +523,7 @@ impl Mint {
         previous_output: input,
         script_sig: script::Builder::new().into_script(),
         witness: Witness::new(),
-        sequence: Sequence::ENABLE_RBF_NO_LOCKTIME,
+        sequence: Sequence::MAX,
       }],
       output,
       lock_time: PackedLockTime::ZERO,
