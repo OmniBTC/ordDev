@@ -915,7 +915,7 @@ async fn main() {
     wallet: "ord".to_string(),
   };
 
-  let addr = SocketAddr::new(ip.as_str().parse().unwrap(), 3090);
+  let addr = SocketAddr::new(ip.as_str().parse().unwrap(), 3100);
   info!(
     "Server running at http://{}, network:{:?}, service:{:?}",
     addr,
