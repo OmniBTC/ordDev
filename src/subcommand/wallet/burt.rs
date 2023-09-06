@@ -23,7 +23,7 @@ pub struct Output {
   pub service_fee: u64,
   pub commit_vsize: u64,
   pub commit_fee: u64,
-  pub min_fee_rate: f64
+  pub min_fee_rate: f64,
 }
 
 impl Burt {
@@ -61,7 +61,7 @@ impl Burt {
       value: 0,
     }];
     let (mut update_burt_tx, network_fee, last_output_amount) =
-      Self::build_burt_transaction(self.fee_rate, burt_txs, output);
+      Self::build_burt_transaction(self.fee_rate, &burt_txs, output);
     let commit_vsize = update_burt_tx.vsize() as u64;
 
     let input_amount = Self::get_amount(&update_burt_tx, &burt_utxo)?;
@@ -73,13 +73,12 @@ impl Burt {
       input.witness = Witness::new();
     }
 
-    let unsigned_transaction_psbt =
-      Self::get_psbt(&update_burt_tx, &burt_utxo, &self.destination)?;
+    let unsigned_transaction_psbt = Self::get_psbt(&update_burt_tx, &burt_utxo, &self.destination)?;
     let unsigned_commit_custom = Self::get_custom(&unsigned_transaction_psbt);
 
     log::info!("Build burt success");
 
-    let min_fee_rate = (last_output_amount as f64)/(commit_vsize as f64);
+    let min_fee_rate = (last_output_amount as f64) / (commit_vsize as f64);
 
     Ok(Output {
       transaction: serialize_hex(&unsigned_transaction_psbt),
@@ -88,7 +87,7 @@ impl Burt {
       service_fee,
       commit_vsize,
       commit_fee: network_fee,
-      min_fee_rate
+      min_fee_rate,
     })
   }
 
@@ -115,7 +114,7 @@ impl Burt {
   ) -> Result<Psbt> {
     let mut tx_psbt = Psbt::from_unsigned_tx(tx.clone())?;
     for i in 0..tx_psbt.unsigned_tx.input.len() {
-      tx_psbt.burt_txs[i].witness_utxo = Some(TxOut {
+      tx_psbt.inputs[i].witness_utxo = Some(TxOut {
         value: utxos
           .get(&tx_psbt.unsigned_tx.input[i].previous_output)
           .ok_or_else(|| anyhow!("wallet contains no cardinal utxos"))?
@@ -130,7 +129,7 @@ impl Burt {
     let unsigned_commit_custom = ConstructTransaction {
       pre_outputs: TransactionOutputArray {
         outputs: tx
-          .burt_txs
+          .inputs
           .iter()
           .map(|v| v.witness_utxo.clone().expect("Must has input"))
           .collect(),
@@ -155,9 +154,9 @@ impl Burt {
     let mut input = vec![];
     let mut last_output_amount = 0;
 
-    for burt_tx in burt_txs{
+    for burt_tx in burt_txs {
       input.append(&mut burt_tx.input.clone());
-      for o in &burt_tx.output{
+      for o in &burt_tx.output {
         last_output_amount += o.value;
       }
     }
