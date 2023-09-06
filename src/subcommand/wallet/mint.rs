@@ -268,7 +268,14 @@ impl Mint {
     target_postage: Amount,
     additional_service_fee: Amount,
     is_unsafe: bool,
-  ) -> Result<(Transaction, Vec<Transaction>, TweakedKeyPair, u64, u64, u64)> {
+  ) -> Result<(
+    Transaction,
+    Vec<Transaction>,
+    Vec<TweakedKeyPair>,
+    u64,
+    u64,
+    u64,
+  )> {
     let satpoints = if !satpoints.is_empty() {
       satpoints
     } else {
@@ -320,23 +327,37 @@ impl Mint {
       }
     }
 
-    let secp256k1 = Secp256k1::new();
-    let key_pair = UntweakedKeyPair::new(&secp256k1, &mut rand::thread_rng());
-    let (public_key, _parity) = XOnlyPublicKey::from_keypair(&key_pair);
-
     let reveal_script = inscription.to_script();
 
-    let taproot_spend_info = TaprootBuilder::new()
-      .add_leaf(0, reveal_script.clone())
-      .expect("adding leaf should work")
-      .finalize(&secp256k1, public_key)
-      .expect("finalizing taproot builder should work");
+    let secp256k1 = Secp256k1::new();
+    let mut key_pairs = vec![];
+    let mut public_keys = vec![];
+    let mut taproot_spend_info = vec![];
+    let mut control_block = vec![];
+    let mut commit_tx_address = vec![];
+    let mut recovery_key_pairs = vec![];
 
-    let control_block = taproot_spend_info
-      .control_block(&(reveal_script.clone(), LeafVersion::TapScript))
-      .expect("should compute control block");
+    for _ in 0..repeat {
+      let key_pair = UntweakedKeyPair::new(&secp256k1, &mut rand::thread_rng());
+      let (public_key, _parity) = XOnlyPublicKey::from_keypair(&key_pair);
+      key_pairs.push(key_pair);
+      public_keys.push(public_key);
 
-    let commit_tx_address = Address::p2tr_tweaked(taproot_spend_info.output_key(), network);
+      let t = TaprootBuilder::new()
+        .add_leaf(0, reveal_script.clone())
+        .expect("adding leaf should work")
+        .finalize(&secp256k1, public_key)
+        .expect("finalizing taproot builder should work");
+
+      let cb = t
+        .control_block(&(reveal_script.clone(), LeafVersion::TapScript))
+        .expect("should compute control block");
+
+      let ct = Address::p2tr_tweaked(t.output_key(), network);
+      taproot_spend_info.push(t);
+      control_block.push(cb);
+      commit_tx_address.push(ct);
+    }
 
     let mut reveal_fees: Vec<Amount> = vec![];
 
@@ -363,7 +384,7 @@ impl Mint {
         }]
       };
       let (_, reveal_fee) = Self::build_reveal_transaction(
-        &control_block,
+        &control_block[i],
         reveal_fee_rate,
         OutPoint::null(),
         reveal_output,
@@ -372,11 +393,11 @@ impl Mint {
       reveal_fees.push(reveal_fee);
       if i == 0 {
         outputs.push((
-          commit_tx_address.clone(),
+          commit_tx_address[i].clone(),
           reveal_fee + target_postage + service_fee,
         ));
       } else {
-        outputs.push((commit_tx_address.clone(), reveal_fee + target_postage));
+        outputs.push((commit_tx_address[i].clone(), reveal_fee + target_postage));
       }
     }
 
@@ -430,7 +451,7 @@ impl Mint {
       let (txid, vout) = (unsigned_commit_tx.txid(), u32::try_from(i).unwrap());
 
       let (mut reveal_tx, _fee) = Self::build_reveal_transaction(
-        &control_block,
+        &control_block[i],
         reveal_fee_rate,
         OutPoint { txid, vout },
         reveal_output,
@@ -457,14 +478,14 @@ impl Mint {
       let _signature = secp256k1.sign_schnorr(
         &secp256k1::Message::from_slice(signature_hash.as_inner())
           .expect("should be cryptographically secure hash"),
-        &key_pair,
+        &key_pairs[i],
       );
 
       let witness = sighash_cache
         .witness_mut(0)
         .expect("getting mutable witness reference should work");
       witness.push(reveal_script.clone());
-      witness.push(&control_block.serialize());
+      witness.push(&control_block[i].serialize());
 
       let reveal_weight = reveal_tx.weight();
 
@@ -475,23 +496,25 @@ impl Mint {
       }
 
       reveal_txs.push(reveal_tx);
+
+      let recovery_key_pair =
+        key_pairs[i].tap_tweak(&secp256k1, taproot_spend_info[i].merkle_root());
+
+      let (x_only_pub_key, _parity) = recovery_key_pair.to_inner().x_only_public_key();
+      assert_eq!(
+        Address::p2tr_tweaked(
+          TweakedPublicKey::dangerous_assume_tweaked(x_only_pub_key),
+          network,
+        ),
+        commit_tx_address[i]
+      );
+      recovery_key_pairs.push(recovery_key_pair);
     }
-
-    let recovery_key_pair = key_pair.tap_tweak(&secp256k1, taproot_spend_info.merkle_root());
-
-    let (x_only_pub_key, _parity) = recovery_key_pair.to_inner().x_only_public_key();
-    assert_eq!(
-      Address::p2tr_tweaked(
-        TweakedPublicKey::dangerous_assume_tweaked(x_only_pub_key),
-        network,
-      ),
-      commit_tx_address
-    );
 
     Ok((
       unsigned_commit_tx,
       reveal_txs,
-      recovery_key_pair,
+      recovery_key_pairs,
       service_fee,
       satpoint_fee,
       network_fee,
