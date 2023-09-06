@@ -290,18 +290,16 @@ impl Mint {
         let mut last_value = Amount::ZERO;
         let mut found = None;
 
-        for outpoint in &utxos {
-          let value = utxos[outpoint];
-
-          if value > last_value {
+        for (outpoint, value) in &utxos {
+          if *value > last_value {
             found = Some(SatPoint {
               outpoint: *outpoint,
               offset: 0,
             });
-            last_value = value;
+            last_value = *value;
           }
         }
-        found.ok_or(anyhow!("wallet contains no cardinal utxos"))?
+        vec![found.ok_or(anyhow!("wallet contains no cardinal utxos"))?]
       }
     };
 
