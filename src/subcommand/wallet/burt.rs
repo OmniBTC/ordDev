@@ -84,7 +84,7 @@ impl Burt {
       transaction: serialize_hex(&unsigned_transaction_psbt),
       commit_custom: unsigned_commit_custom,
       network_fee,
-      service_fee,
+      service_fee: 0,
       commit_vsize,
       commit_fee: network_fee,
       min_fee_rate,
