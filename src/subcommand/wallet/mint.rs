@@ -71,18 +71,14 @@ impl Mint {
       .open("data.csv")?;
     let mut writer = csv::Writer::from_writer(file);
 
-    let record = vec![
-      file_data.commit_txid,
-      file_data.commit_address,
-      file_data.commit_key,
-    ];
+    let record = serde_json::to_string(&file_data);
 
     writer
       .write_record(&record)
-      .ok_or_else(|| anyhow!("Write record fail"))?;
+      .map_err(|| anyhow!("Write record fail"))?;
 
     // 刷新并关闭文件
-    writer.flush().ok_or_else(|| anyhow!("Flush fail"))?;
+    writer.flush().map_err(|| anyhow!("Flush fail"))?;
 
     Ok(())
   }
