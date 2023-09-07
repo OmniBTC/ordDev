@@ -340,14 +340,15 @@ impl Mint {
     let mut recovery_key_pairs = vec![];
 
     for _ in 0..repeat {
-      let reveal_script = item.append_reveal_script(
+      let key_pair = UntweakedKeyPair::new(&secp256k1, &mut rand::thread_rng());
+      let (public_key, _parity) = XOnlyPublicKey::from_keypair(&key_pair);
+
+      let reveal_script = inscription.append_reveal_script(
         script::Builder::new()
           .push_slice(&public_key.serialize())
           .push_opcode(opcodes::all::OP_CHECKSIG),
       );
 
-      let key_pair = UntweakedKeyPair::new(&secp256k1, &mut rand::thread_rng());
-      let (public_key, _parity) = XOnlyPublicKey::from_keypair(&key_pair);
       key_pairs.push(key_pair);
       public_keys.push(public_key);
 
