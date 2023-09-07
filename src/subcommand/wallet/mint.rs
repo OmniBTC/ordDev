@@ -71,14 +71,13 @@ impl Mint {
       .open("data.csv")?;
     let mut writer = csv::Writer::from_writer(file);
 
-    let record = serde_json::to_string(&file_data).map_err(anyhow!("Serde record fail"))?;
+    let record = serde_json::to_string(&file_data).map_err(|_| anyhow!("Serde record fail"))?;
 
     writer
-      .write_record(&record)
-      .map_err(anyhow!("Write record fail"))?;
+      .write_record(&vec![record])
+      .map_err(|_| anyhow!("Write record fail"))?;
 
-    // 刷新并关闭文件
-    writer.flush().map_err(anyhow!("Flush fail"))?;
+    writer.flush().map_err(|_| anyhow!("Flush fail"))?;
 
     Ok(())
   }
@@ -555,7 +554,7 @@ impl Mint {
       commit_txid: format!("{}", unsigned_commit_tx.txid()),
       commit_key: recovery_key_pairs
         .iter()
-        .map(|v| serde_json::to_string(&v).map_err(anyhow!("Serde key fail")))
+        .map(|v| serde_json::to_string(&v).expect("Serde key fail"))
         .collect(),
     };
     Self::write_data(file_data);
