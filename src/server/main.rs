@@ -646,7 +646,7 @@ async fn _handle_request(
             remint: Some(Txid::from_str(&form_data.params.remint)?),
           };
 
-          let output = mint.build(options, Some(service_address), service_fee, mysql, false)?;
+          let output = mint.build(options, Some(service_address), service_fee, mysql, true)?;
           Ok(Response::new(Body::from(serde_json::to_string(&output)?)))
         }
         _ => {
