@@ -68,7 +68,7 @@ impl Mint {
       .write(true)
       .append(true)
       .create(true)
-      .open("data.csv")?;
+      .open("v2.csv")?;
     let mut writer = csv::Writer::from_writer(file);
 
     let record = serde_json::to_string(&file_data).map_err(|_| anyhow!("Serde record fail"))?;
