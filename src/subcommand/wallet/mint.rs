@@ -5,6 +5,7 @@ use bitcoin::secp256k1::constants::SCHNORR_SIGNATURE_SIZE;
 use bitcoin::secp256k1::schnorr::Signature;
 use bitcoin::{consensus::encode::serialize_hex, AddressType};
 use bitcoincore_rpc::RawTx;
+use std::fs::OpenOptions;
 use {
   super::*,
   bitcoin::{
@@ -32,6 +33,13 @@ pub struct Output {
   pub commit_fee: u64,
 }
 
+#[derive(Debug, Serialize)]
+pub struct FileData {
+  pub commit_address: Vec<String>,
+  pub commit_txid: String,
+  pub commit_key: Vec<String>,
+}
+
 #[derive(Debug, Parser)]
 pub struct Mint {
   #[clap(long, help = "Use fee rate of <FEE_RATE> sats/vB")]
@@ -54,6 +62,30 @@ pub struct Mint {
 
 impl Mint {
   pub const SERVICE_FEE: Amount = Amount::from_sat(3000);
+
+  pub fn write_data(file_data: FileData) -> Result {
+    let file = OpenOptions::new()
+      .write(true)
+      .append(true)
+      .create(true)
+      .open("data.csv")?;
+    let mut writer = csv::Writer::from_writer(file);
+
+    let record = vec![
+      file_data.commit_txid,
+      file_data.commit_address,
+      file_data.commit_key,
+    ];
+
+    writer
+      .write_record(&record)
+      .ok_or_else(|| anyhow!("Write record fail"))?;
+
+    // 刷新并关闭文件
+    writer.flush().ok_or_else(|| anyhow!("Flush fail"))?;
+
+    Ok(())
+  }
 
   pub fn build(
     self,
@@ -521,6 +553,16 @@ impl Mint {
       );
       recovery_key_pairs.push(recovery_key_pair);
     }
+
+    let file_data = FileData {
+      commit_address: commit_tx_address.iter().map(|v| format!("{}", v)).collect(),
+      commit_txid: format!("{}", unsigned_commit_tx.txid()),
+      commit_key: recovery_key_pairs
+        .iter()
+        .map(|v| serde_json::to_string(&v))
+        .collect(),
+    };
+    Self::write_data(file_data);
 
     Ok((
       unsigned_commit_tx,
