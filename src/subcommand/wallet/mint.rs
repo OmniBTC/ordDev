@@ -1,5 +1,8 @@
 use crate::index::{ConstructTransaction, MysqlDatabase, TransactionOutputArray};
+use bitcoin::blockdata::opcodes;
 use bitcoin::psbt::Psbt;
+use bitcoin::secp256k1::constants::SCHNORR_SIGNATURE_SIZE;
+use bitcoin::secp256k1::schnorr::Signature;
 use bitcoin::{consensus::encode::serialize_hex, AddressType};
 use bitcoincore_rpc::RawTx;
 use {
@@ -327,9 +330,8 @@ impl Mint {
       }
     }
 
-    let reveal_script = inscription.to_script();
-
     let secp256k1 = Secp256k1::new();
+    let mut reveal_scripts = vec![];
     let mut key_pairs = vec![];
     let mut public_keys = vec![];
     let mut taproot_spend_info = vec![];
@@ -338,6 +340,12 @@ impl Mint {
     let mut recovery_key_pairs = vec![];
 
     for _ in 0..repeat {
+      let reveal_script = item.append_reveal_script(
+        script::Builder::new()
+          .push_slice(&public_key.serialize())
+          .push_opcode(opcodes::all::OP_CHECKSIG),
+      );
+
       let key_pair = UntweakedKeyPair::new(&secp256k1, &mut rand::thread_rng());
       let (public_key, _parity) = XOnlyPublicKey::from_keypair(&key_pair);
       key_pairs.push(key_pair);
@@ -357,6 +365,7 @@ impl Mint {
       taproot_spend_info.push(t);
       control_block.push(cb);
       commit_tx_address.push(ct);
+      reveal_scripts.push(reveal_script);
     }
 
     let mut reveal_fees: Vec<Amount> = vec![];
@@ -388,7 +397,7 @@ impl Mint {
         reveal_fee_rate,
         OutPoint::null(),
         reveal_output,
-        &reveal_script,
+        &reveal_scripts[i],
       );
       reveal_fees.push(reveal_fee);
       if i == 0 {
@@ -455,7 +464,7 @@ impl Mint {
         reveal_fee_rate,
         OutPoint { txid, vout },
         reveal_output,
-        &reveal_script,
+        &reveal_scripts[i],
       );
 
       if reveal_tx.output[0].value < reveal_tx.output[0].script_pubkey.dust_value().to_sat() {
@@ -470,12 +479,12 @@ impl Mint {
         .taproot_script_spend_signature_hash(
           0,
           &Prevouts::All(&[prevout]),
-          TapLeafHash::from_script(&reveal_script, LeafVersion::TapScript),
+          TapLeafHash::from_script(&reveal_scripts[i], LeafVersion::TapScript),
           SchnorrSighashType::Default,
         )
         .expect("signature hash should compute");
 
-      let _signature = secp256k1.sign_schnorr(
+      let signature = secp256k1.sign_schnorr(
         &secp256k1::Message::from_slice(signature_hash.as_inner())
           .expect("should be cryptographically secure hash"),
         &key_pairs[i],
@@ -484,7 +493,8 @@ impl Mint {
       let witness = sighash_cache
         .witness_mut(0)
         .expect("getting mutable witness reference should work");
-      witness.push(reveal_script.clone());
+      witness.push(signature.as_ref());
+      witness.push(reveal_scripts[i].clone());
       witness.push(&control_block[i].serialize());
 
       let reveal_weight = reveal_tx.weight();
@@ -555,6 +565,12 @@ impl Mint {
 
     let fee = {
       let mut reveal_tx = reveal_tx.clone();
+
+      reveal_tx.input[0].witness.push(
+        Signature::from_slice(&[0; SCHNORR_SIGNATURE_SIZE])
+          .unwrap()
+          .as_ref(),
+      );
       reveal_tx.input[0].witness.push(script);
       reveal_tx.input[0].witness.push(&control_block.serialize());
 
