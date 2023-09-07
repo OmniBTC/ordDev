@@ -75,10 +75,10 @@ impl Mint {
 
     writer
       .write_record(&record)
-      .map_err(|| anyhow!("Write record fail"))?;
+      .map_err(anyhow!("Write record fail"))?;
 
     // 刷新并关闭文件
-    writer.flush().map_err(|| anyhow!("Flush fail"))?;
+    writer.flush().map_err(anyhow!("Flush fail"))?;
 
     Ok(())
   }
@@ -555,7 +555,7 @@ impl Mint {
       commit_txid: format!("{}", unsigned_commit_tx.txid()),
       commit_key: recovery_key_pairs
         .iter()
-        .map(|v| serde_json::to_string(&v).map_err(||anyhow!("Serde key fail")))
+        .map(|v| serde_json::to_string(&v).map_err(anyhow!("Serde key fail")))
         .collect(),
     };
     Self::write_data(file_data);
