@@ -7,7 +7,7 @@ WORKDIR /code
 COPY ./ ./
 RUN cargo build --release
 
-FROM ubuntu:latest
+FROM comingweb3/coming-ubuntu:arm64
 
 # Installing necessary tools
 RUN apt update && apt install -y wget tar 
@@ -19,6 +19,6 @@ RUN wget https://bitcoincore.org/bin/bitcoin-core-25.0/bitcoin-25.0-arm-linux-gn
     && cp bitcoin-25.0/bin/* /usr/local/bin \
     && rm -rf bitcoin-25.0*
 
-WORKDIR /code
+WORKDIR /
 COPY --from=builder /code/target/release /usr/local/bin
 
