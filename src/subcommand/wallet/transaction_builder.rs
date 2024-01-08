@@ -278,6 +278,43 @@ impl TransactionBuilder {
     )
   }
 
+  pub fn build_transaction_with_value_v2(
+    input_type: AddressType,
+    outgoings: Vec<SatPoint>,
+    inscriptions: BTreeMap<SatPoint, InscriptionId>,
+    amounts: BTreeMap<OutPoint, Amount>,
+    outputs: Vec<(Address, Amount)>,
+    change: [Address; 2],
+    fee_rate: FeeRate,
+  ) -> Result<Transaction> {
+    let recipient = outputs[outputs.len() - 1].0.clone();
+    let output_value = outputs[outputs.len() - 1].1;
+    let dust_value = recipient.script_pubkey().dust_value();
+
+    if output_value < dust_value {
+      return Err(Error::Dust {
+        output_value,
+        dust_value,
+      });
+    }
+
+    Self::new(
+      input_type,
+      outgoings[0],
+      inscriptions,
+      amounts,
+      recipient,
+      change,
+      fee_rate,
+      Target::Value(output_value),
+      None,
+    )?
+    .build_transaction_v2(
+      outgoings[1..].to_vec(),
+      outputs[..outputs.len() - 1].to_vec(),
+    )
+  }
+
   pub fn build_transaction_with_op_return_v1(
     input_type: AddressType,
     outgoings: Vec<SatPoint>,
@@ -346,6 +383,25 @@ impl TransactionBuilder {
       .build()
   }
 
+  fn build_transaction_v2(
+    mut self,
+    mut addition_outgoings: Vec<SatPoint>,
+    addition_outputs: Vec<(Address, Amount)>,
+  ) -> Result<Transaction> {
+    self = self.unsafe_select_outgoing()?;
+    while let Some(item) = addition_outgoings.pop() {
+      self = self.unsafe_add_outgoing(item)?;
+    }
+    self
+      .align_outgoing()
+      .pad_alignment_output()?
+      .add_outputs(addition_outputs)?
+      .unsafe_add_value()?
+      .strip_value()
+      .deduct_fee()
+      .build()
+  }
+
   fn new(
     input_type: AddressType,
     outgoing: SatPoint,
@@ -382,6 +438,7 @@ impl TransactionBuilder {
     })
   }
 
+  // Add the first outgoing to the input and output
   fn select_outgoing(mut self) -> Result<Self> {
     for (inscribed_satpoint, inscription_id) in &self.inscriptions {
       if self.outgoing.outpoint == inscribed_satpoint.outpoint
@@ -417,6 +474,30 @@ impl TransactionBuilder {
     Ok(self)
   }
 
+  fn unsafe_select_outgoing(mut self) -> Result<Self> {
+    let amount = *self
+      .amounts
+      .get(&self.outgoing.outpoint)
+      .ok_or(Error::NotInWallet(self.outgoing))?;
+
+    if self.outgoing.offset >= amount.to_sat() {
+      return Err(Error::OutOfRange(self.outgoing, amount.to_sat() - 1));
+    }
+
+    self.utxos.remove(&self.outgoing.outpoint);
+    self.inputs.push(self.outgoing.outpoint);
+    self.outputs.push((self.recipient.clone(), amount));
+
+    tprintln!(
+      "selected outgoing outpoint {} with value {}",
+      self.outgoing.outpoint,
+      amount.to_sat()
+    );
+
+    Ok(self)
+  }
+
+  // Add remaining outgoing to input and output
   fn add_outgoing(mut self, outgoing: SatPoint) -> Result<Self> {
     for (inscribed_satpoint, inscription_id) in &self.inscriptions {
       if outgoing.outpoint == inscribed_satpoint.outpoint
@@ -430,6 +511,29 @@ impl TransactionBuilder {
       }
     }
 
+    let amount = *self
+      .amounts
+      .get(&outgoing.outpoint)
+      .ok_or(Error::NotInWallet(outgoing))?;
+
+    if outgoing.offset >= amount.to_sat() {
+      return Err(Error::OutOfRange(outgoing, amount.to_sat() - 1));
+    }
+
+    self.utxos.remove(&outgoing.outpoint);
+    self.inputs.push(outgoing.outpoint);
+    self.outputs[0].1 += amount;
+
+    tprintln!(
+      "selected outgoing outpoint {} with value {}",
+      outgoing.outpoint,
+      amount.to_sat()
+    );
+
+    Ok(self)
+  }
+
+  fn unsafe_add_outgoing(mut self, outgoing: SatPoint) -> Result<Self> {
     let amount = *self
       .amounts
       .get(&outgoing.outpoint)
@@ -502,6 +606,7 @@ impl TransactionBuilder {
     Ok(self)
   }
 
+  // Add outputs
   fn add_outputs(mut self, mut data: Vec<(Address, Amount)>) -> Result<Self> {
     data.reverse();
     for item in data {
@@ -511,38 +616,80 @@ impl TransactionBuilder {
   }
 
   fn add_value(mut self) -> Result<Self> {
-    let estimated_fee = self.estimate_fee();
+    let mut input_amount = self.outputs.last().unwrap().1;
+    loop {
+      let estimated_fee = self.estimate_fee();
 
-    let min_value = match self.target {
-      Target::Postage => self.outputs.last().unwrap().0.script_pubkey().dust_value(),
-      Target::Value(value) => value,
-    };
+      let min_value = match self.target {
+        Target::Postage => self.outputs.last().unwrap().0.script_pubkey().dust_value(),
+        Target::Value(value) => value,
+      };
 
-    let mut addition_output_value = Amount::ZERO;
-    for item in &self.outputs[..self.outputs.len() - 1] {
-      addition_output_value += item.1;
-    }
-
-    let total = min_value
-      .checked_add(estimated_fee)
-      .ok_or(Error::ValueOverflow)?
-      .checked_add(addition_output_value)
-      .ok_or(Error::ValueOverflow)?;
-
-    if let Some(deficit) = total.checked_sub(self.outputs.last().unwrap().1) {
-      if deficit > Amount::ZERO {
-        let needed = deficit
-          .checked_add(self.fee_rate.fee(Self::ADDITIONAL_INPUT_VBYTES))
-          .ok_or(Error::ValueOverflow)?;
-        let (utxo, value) = self.select_cardinal_utxo(needed)?;
-        self.inputs.push(utxo);
-        self.outputs.last_mut().unwrap().1 += value - addition_output_value;
-        tprintln!("added {value} sat input to cover {deficit} sat deficit");
+      let mut addition_output_value = Amount::ZERO;
+      for item in &self.outputs[..self.outputs.len() - 1] {
+        addition_output_value += item.1;
       }
-    } else {
-      self.outputs.last_mut().unwrap().1 -= addition_output_value;
-    }
 
+      let total = min_value
+        .checked_add(estimated_fee)
+        .ok_or(Error::ValueOverflow)?
+        .checked_add(addition_output_value)
+        .ok_or(Error::ValueOverflow)?;
+
+      if let Some(deficit) = total.checked_sub(input_amount) {
+        if deficit > Amount::ZERO {
+          let (utxo, value) = self.select_max_cardinal_utxo()?;
+          self.inputs.push(utxo);
+          input_amount += value;
+          tprintln!("added {value} sat input to cover {deficit} sat deficit");
+        } else {
+          self.outputs.last_mut().unwrap().1 = input_amount - addition_output_value;
+          break;
+        }
+      } else {
+        self.outputs.last_mut().unwrap().1 = input_amount - addition_output_value;
+        break;
+      }
+    }
+    Ok(self)
+  }
+
+  fn unsafe_add_value(mut self) -> Result<Self> {
+    let mut input_amount = self.outputs.last().unwrap().1;
+    loop {
+      let estimated_fee = self.estimate_fee();
+
+      let min_value = match self.target {
+        Target::Postage => self.outputs.last().unwrap().0.script_pubkey().dust_value(),
+        Target::Value(value) => value,
+      };
+
+      let mut addition_output_value = Amount::ZERO;
+      for item in &self.outputs[..self.outputs.len() - 1] {
+        addition_output_value += item.1;
+      }
+
+      let total = min_value
+        .checked_add(estimated_fee)
+        .ok_or(Error::ValueOverflow)?
+        .checked_add(addition_output_value)
+        .ok_or(Error::ValueOverflow)?;
+
+      if let Some(deficit) = total.checked_sub(input_amount) {
+        if deficit > Amount::ZERO {
+          let (utxo, value) = self.unsafe_select_max_cardinal_utxo()?;
+          self.inputs.push(utxo);
+          input_amount += value;
+          tprintln!("added {value} sat input to cover {deficit} sat deficit");
+        } else {
+          self.outputs.last_mut().unwrap().1 = input_amount - addition_output_value;
+          break;
+        }
+      } else {
+        self.outputs.last_mut().unwrap().1 = input_amount - addition_output_value;
+        break;
+      }
+    }
     Ok(self)
   }
 
@@ -956,6 +1103,56 @@ impl TransactionBuilder {
       if value >= minimum_value {
         found = Some((*utxo, value));
         break;
+      }
+    }
+
+    let (utxo, value) = found.ok_or(Error::NotEnoughCardinalUtxos)?;
+
+    self.utxos.remove(&utxo);
+
+    Ok((utxo, value))
+  }
+
+  fn select_max_cardinal_utxo(&mut self) -> Result<(OutPoint, Amount)> {
+    let mut found = None;
+
+    let inscribed_utxos = self
+      .inscriptions
+      .keys()
+      .map(|satpoint| satpoint.outpoint)
+      .collect::<BTreeSet<OutPoint>>();
+
+    let mut last_value = Amount::ZERO;
+    for utxo in &self.utxos {
+      if inscribed_utxos.contains(utxo) {
+        continue;
+      }
+
+      let value = self.amounts[utxo];
+
+      if value > last_value {
+        found = Some((*utxo, value));
+        last_value = value;
+      }
+    }
+
+    let (utxo, value) = found.ok_or(Error::NotEnoughCardinalUtxos)?;
+
+    self.utxos.remove(&utxo);
+
+    Ok((utxo, value))
+  }
+
+  fn unsafe_select_max_cardinal_utxo(&mut self) -> Result<(OutPoint, Amount)> {
+    let mut found = None;
+
+    let mut last_value = Amount::ZERO;
+    for utxo in &self.utxos {
+      let value = self.amounts[utxo];
+
+      if value > last_value {
+        found = Some((*utxo, value));
+        last_value = value;
       }
     }
 
