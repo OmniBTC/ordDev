@@ -202,7 +202,7 @@ impl Transfer {
             outpoint: *outpoint,
             offset: 0,
           })
-          .ok_or_else(|| anyhow!("wallet contains no cardinal utxos"))?;
+          .ok_or_else(|| anyhow!("wallet contains no cardinal utxos, not support lower 10000 satoshi"))?;
         (vec![satpoint], amount + self.addition_fee, unspent_outputs)
       }
     };
