@@ -433,6 +433,7 @@ impl Updater {
 
       if prev_hash.value() != block.header.prev_blockhash.as_ref() {
         index.reorged.store(true, atomic::Ordering::Relaxed);
+        index.reorg_height(prev_height - 1)?;
         return Err(anyhow!("reorg detected at or before {prev_height}"));
       }
     }

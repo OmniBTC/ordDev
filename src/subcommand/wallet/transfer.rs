@@ -197,12 +197,17 @@ impl Transfer {
           index.get_unspent_outputs_by_mempool_v1(query_address, BTreeMap::new())?;
         let satpoint = unspent_outputs
           .keys()
-          .find(|outpoint| (!inscribed_utxos.contains(outpoint) && unspent_outputs[outpoint] > Amount::from_sat(999)))
+          .find(|outpoint| {
+            (!inscribed_utxos.contains(outpoint)
+              && unspent_outputs[outpoint] > Amount::from_sat(999))
+          })
           .map(|outpoint| SatPoint {
             outpoint: *outpoint,
             offset: 0,
           })
-          .ok_or_else(|| anyhow!("wallet contains no cardinal utxos, not support lower 10000 satoshi"))?;
+          .ok_or_else(|| {
+            anyhow!("wallet contains no cardinal utxos, not support lower 10000 satoshi")
+          })?;
         (vec![satpoint], amount + self.addition_fee, unspent_outputs)
       }
     };
