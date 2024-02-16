@@ -197,7 +197,7 @@ impl Transfer {
           index.get_unspent_outputs_by_mempool_v1(query_address, BTreeMap::new())?;
         let satpoint = unspent_outputs
           .keys()
-          .find(|outpoint| (!inscribed_utxos.contains(outpoint) && unspent_outputs[outpoint] > Amount::from_sat(9999)))
+          .find(|outpoint| (!inscribed_utxos.contains(outpoint) && unspent_outputs[outpoint] > Amount::from_sat(999)))
           .map(|outpoint| SatPoint {
             outpoint: *outpoint,
             offset: 0,
