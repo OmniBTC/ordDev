@@ -107,9 +107,9 @@ impl Mint {
     log::info!("Get utxo...");
     let query_address = &format!("{}", source);
     let mut additional_service_fee = Amount::ZERO;
-    let (utxos, satpoints) = if let Some(commit_id) = self.remint {
+    let (mut utxos, satpoints) = if let Some(commit_id) = self.remint {
       additional_service_fee = Amount::from_sat(3000);
-      let (utxos, recommit_tx) =
+      let (mut utxos, recommit_tx) =
         index.get_unspent_outputs_by_commit_id(query_address, BTreeMap::new(), commit_id)?;
       (
         utxos,
@@ -128,6 +128,8 @@ impl Mint {
         vec![],
       )
     };
+
+    utxos.retain(|_, amount| amount.to_sat() > 546);
 
     let mut is_whitelist = false;
     let inscriptions = if let Some(mysql) = mysql {
