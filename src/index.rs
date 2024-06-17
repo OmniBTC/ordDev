@@ -448,6 +448,47 @@ impl Index {
         }
         database
       }
+      Err(redb::Error::Io(error)) if error.kind() == io::ErrorKind::NotFound => {
+        let database = unsafe {
+          Database::builder()
+            .set_write_strategy(if cfg!(test) {
+              WriteStrategy::Checksum
+            } else {
+              WriteStrategy::TwoPhase
+            })
+            .create_mmapped(&path)?
+        };
+        let tx = database.begin_write()?;
+
+        #[cfg(test)]
+        let tx = {
+          let mut tx = tx;
+          tx.set_durability(redb::Durability::None);
+          tx
+        };
+
+        tx.open_table(HEIGHT_TO_BLOCK_HASH)?;
+        tx.open_table(INSCRIPTION_ID_TO_INSCRIPTION_ENTRY)?;
+        tx.open_table(INSCRIPTION_ID_TO_SATPOINT)?;
+        tx.open_table(INSCRIPTION_NUMBER_TO_INSCRIPTION_ID)?;
+        tx.open_table(OUTPOINT_TO_VALUE)?;
+        tx.open_table(SATPOINT_TO_INSCRIPTION_ID)?;
+        tx.open_table(SAT_TO_INSCRIPTION_ID)?;
+        tx.open_table(SAT_TO_SATPOINT)?;
+        tx.open_table(WRITE_TRANSACTION_STARTING_BLOCK_COUNT_TO_TIMESTAMP)?;
+
+        tx.open_table(STATISTIC_TO_COUNT)?
+          .insert(&Statistic::Schema.key(), &SCHEMA_VERSION)?;
+
+        if options.index_sats {
+          tx.open_table(OUTPOINT_TO_SAT_RANGES)?
+            .insert(&OutPoint::null().store(), [].as_slice())?;
+        }
+
+        tx.commit()?;
+
+        database
+      }
       Err(error) => return Err(error.into()),
     };
 
