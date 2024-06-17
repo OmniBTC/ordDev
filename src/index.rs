@@ -602,7 +602,7 @@ impl Index {
     let mut filter_utxos = BTreeMap::new();
     for (outpoint, amount) in utxos.into_iter() {
       if remain_outpoint.contains_key(&outpoint)
-        || outpoint_to_value.get(&outpoint.store())?.is_some()
+        // || outpoint_to_value.get(&outpoint.store())?.is_some()
       {
         filter_utxos.insert(outpoint, amount);
       }
@@ -640,7 +640,7 @@ impl Index {
     let mut filter_utxos = BTreeMap::new();
     for (outpoint, amount) in utxos.into_iter() {
       if remain_outpoint.contains_key(&outpoint)
-        || outpoint_to_value.get(&outpoint.store())?.is_some()
+        // || outpoint_to_value.get(&outpoint.store())?.is_some()
       {
         filter_utxos.insert(outpoint, amount);
       }
